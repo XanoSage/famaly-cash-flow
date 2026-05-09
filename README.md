@@ -17,12 +17,19 @@
 - [Categorization](docs/categorization.md)
 - [Category Taxonomy](docs/category-taxonomy.md)
 - [Analytics And Recommendations](docs/analytics-and-recommendations.md)
+- [Dashboard And Reports](docs/dashboard-and-reports.md)
+- [Operations And Cash](docs/operations-and-cash.md)
+- [Budgets Notifications Recommendations](docs/budgets-notifications-recommendations.md)
 - [UI/UX](docs/ui-ux.md)
+- [UI Wireframes](docs/ui-wireframes.md)
 - [Localization](docs/localization.md)
 - [Security](docs/security.md)
 - [Deployment Google Cloud](docs/deployment-google-cloud.md)
 - [Development Workflow](docs/development-workflow.md)
 - [Environments And CI/CD](docs/environments-and-cicd.md)
+- [API Contract Decisions](docs/api-contract-decisions.md)
+- [Implementation Readiness](docs/implementation-readiness.md)
+- [Remaining TZ Questions](docs/remaining-tz-questions.md)
 - [Learning Notes](docs/learning-notes.md)
 - [Testing](docs/testing.md)
 - [Roadmap](docs/roadmap.md)
@@ -41,3 +48,5 @@
 - Деплой: backend в Google Cloud Run, frontend в Firebase Hosting, база в Cloud SQL for PostgreSQL.
 - Окружения: local, staging, production.
 - Git workflow: `main`, `staging`, `feature/*`.
+- API: REST under `/api/v1`, FastAPI OpenAPI plus Markdown schemas.
+- ТЗ считается готовым к старту реализации после обновления docs, короткого implementation plan и минимальных wireframe-описаний UI.

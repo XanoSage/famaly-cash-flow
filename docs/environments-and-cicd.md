@@ -43,9 +43,18 @@ GitHub Actions:
 - deploy frontend to Firebase Hosting staging;
 - production deploy запускается вручную.
 
+## Branching
+
+Перед первой реализацией создаем ветку `staging` от `main`.
+
+Порядок:
+
+1. `main` хранит production-ready историю.
+2. `staging` используется для интеграции и staging deploy.
+3. `feature/*` используется для отдельных задач.
+
 ## Later
 
 - Автоматические миграции с контролем.
 - Preview environments для feature branches.
 - Более полный production release workflow.
-

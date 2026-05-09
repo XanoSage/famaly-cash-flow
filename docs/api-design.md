@@ -2,6 +2,14 @@
 
 Документ описывает черновой API. Точные пути и схемы будут уточняться при реализации.
 
+Все endpoint'ы находятся под префиксом:
+
+```text
+/api/v1
+```
+
+Подробные API-решения описаны в [API Contract Decisions](api-contract-decisions.md).
+
 ## Auth
 
 - `POST /auth/login` - логин по email/password.
@@ -44,7 +52,7 @@ Confirm должен возвращать final summary:
 - `GET /transactions/{id}` - одна операция.
 - `POST /transactions` - ручное создание операции.
 - `PATCH /transactions/{id}` - редактирование операции.
-- `DELETE /transactions/{id}` - удаление или мягкое архивирование операции.
+- `DELETE /transactions/{id}` - soft delete операции.
 
 ## Categories
 

@@ -31,6 +31,13 @@
 - [x] Зафиксировать duplicate handling.
 - [x] Зафиксировать bulk actions и rule creation.
 - [x] Зафиксировать ImportBatch и draft import.
+- [x] Заполнить remaining TZ questions.
+- [x] Зафиксировать dashboard decisions.
+- [x] Зафиксировать operations/cash decisions.
+- [x] Зафиксировать budgets/notifications/recommendations decisions.
+- [x] Зафиксировать API contract decisions.
+- [x] Зафиксировать DevOps/release decisions.
+- [x] Добавить минимальные UI wireframes.
 
 ## Backend
 
@@ -50,6 +57,9 @@
 - [ ] Реализовать categories endpoints.
 - [ ] Реализовать merchants endpoints.
 - [ ] Реализовать analytics endpoints.
+- [ ] Добавить единый API error format.
+- [ ] Добавить AuditLog для imports, transactions, rules.
+- [ ] Добавить soft delete для transactions.
 
 ## Frontend
 
@@ -62,6 +72,8 @@
 - [ ] Реализовать Categories page.
 - [ ] Реализовать Merchants page.
 - [ ] Реализовать Cash page.
+- [ ] Реализовать Budgets page.
+- [ ] Реализовать notifications UI.
 
 ## Infrastructure
 
@@ -75,6 +87,9 @@
 - [ ] Настроить GitHub Actions для tests/build.
 - [ ] Настроить staging deploy.
 - [ ] Настроить manual production deploy.
+- [ ] Создать ветку staging от main перед первой реализацией.
+- [ ] Добавить synthetic sample data.
+- [ ] Добавить seed system categories.
 
 ## Testing
 

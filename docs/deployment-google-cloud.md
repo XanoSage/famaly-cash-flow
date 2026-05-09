@@ -25,6 +25,12 @@ Docker Compose:
   postgres
 ```
 
+Первый deploy target:
+
+1. local Docker Compose;
+2. затем staging backend на Cloud Run;
+3. затем staging frontend на Firebase Hosting.
+
 ## Google Cloud компоненты
 
 - Cloud Run - запуск backend container.
@@ -53,3 +59,14 @@ Cloud Run подходит для MVP, потому что запускает к
 - Где будет размещаться frontend.
 - Нужен ли custom domain.
 - Стратегия миграций Alembic в production.
+
+## Migrations
+
+Staging:
+
+- сначала допустим ручной запуск или отдельная CI job;
+- миграции проходят review перед применением.
+
+Production:
+
+- миграции запускаются вручную после подтверждения.

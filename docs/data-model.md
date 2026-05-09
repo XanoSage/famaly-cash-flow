@@ -86,6 +86,8 @@
 - `is_cash`
 - `is_duplicate_candidate`
 - `needs_review`
+- `deleted_at`
+- `deleted_by_user_id`
 - `created_at`
 - `updated_at`
 
@@ -256,6 +258,22 @@
 - `body_key`
 - `payload`
 - `is_read`
+- `created_at`
+
+## AuditLog
+
+Базовый audit log для важных изменений.
+
+Поля:
+
+- `id`
+- `family_id`
+- `user_id`
+- `entity_type`: `import_batch`, `transaction`, `categorization_rule`
+- `entity_id`
+- `action`
+- `before_payload`
+- `after_payload`
 - `created_at`
 
 ## Family Settings
