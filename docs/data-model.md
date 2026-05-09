@@ -218,3 +218,17 @@
 - `payload`
 - `is_read`
 - `created_at`
+
+## Family Settings
+
+Настройки семейного профиля.
+
+Поля:
+
+- `id`
+- `family_id`
+- `large_transaction_review_threshold`: default `5000`
+- `large_supermarket_review_threshold`: default `2500`
+- `currency`: `UAH`
+- `created_at`
+- `updated_at`

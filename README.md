@@ -14,6 +14,7 @@
 - [XLSX Import](docs/xlsx-import.md)
 - [Bank XLSX Analysis](docs/bank-xlsx-analysis.md)
 - [Categorization](docs/categorization.md)
+- [Category Taxonomy](docs/category-taxonomy.md)
 - [Analytics And Recommendations](docs/analytics-and-recommendations.md)
 - [UI/UX](docs/ui-ux.md)
 - [Localization](docs/localization.md)
