@@ -12,6 +12,7 @@
 - [Data Model](docs/data-model.md)
 - [API Design](docs/api-design.md)
 - [XLSX Import](docs/xlsx-import.md)
+- [Import Preview Flow](docs/import-preview-flow.md)
 - [Bank XLSX Analysis](docs/bank-xlsx-analysis.md)
 - [Categorization](docs/categorization.md)
 - [Category Taxonomy](docs/category-taxonomy.md)

@@ -155,12 +155,51 @@
 - `source_filename`
 - `period_start`
 - `period_end`
-- `status`
+- `status`: `draft`, `confirmed`, `deleted`, `expired`
 - `total_rows`
 - `imported_count`
+- `excluded_count`
 - `duplicate_count`
 - `error_count`
+- `uncategorized_count`
+- `work_fop_count`
+- `savings_count`
+- `parser_version`
+- `mapping_version`
+- `expires_at`
 - `created_at`
+
+## ImportPreviewRow
+
+Нормализованная строка draft import до подтверждения.
+
+Поля:
+
+- `id`
+- `import_batch_id`
+- `row_number`
+- `status`: `auto_ready`, `needs_review`, `duplicate_candidate`, `excluded`, `error`
+- `reason_codes`
+- `occurred_at`
+- `amount`
+- `currency`
+- `transaction_amount`
+- `transaction_currency`
+- `balance_after`
+- `payment_instrument_label`
+- `bank_category_raw`
+- `description_raw`
+- `merchant_name`
+- `proposed_category_id`
+- `proposed_subcategory_id`
+- `proposed_flow_type`
+- `proposed_scope`
+- `confidence`
+- `duplicate_transaction_id`
+- `error_message`
+- `normalized_payload`
+- `created_at`
+- `updated_at`
 
 ## User Preferences
 

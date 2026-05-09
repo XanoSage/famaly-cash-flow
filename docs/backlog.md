@@ -26,6 +26,11 @@
 - [x] Зафиксировать детскую категорию, школу, футбол и медицину ребенка.
 - [x] Зафиксировать дом, услуги, рабочее/FOP, транспорт, авто, развлечения и путешествия.
 - [x] Зафиксировать подписки, подарки, переводы и без категории.
+- [x] Зафиксировать import preview flow.
+- [x] Зафиксировать preview statuses и reason codes.
+- [x] Зафиксировать duplicate handling.
+- [x] Зафиксировать bulk actions и rule creation.
+- [x] Зафиксировать ImportBatch и draft import.
 
 ## Backend
 
@@ -38,6 +43,9 @@
 - [ ] Реализовать модели данных.
 - [ ] Реализовать XLSX preview endpoint.
 - [ ] Реализовать confirm import endpoint.
+- [ ] Реализовать draft import storage.
+- [ ] Реализовать preview rows API.
+- [ ] Реализовать import bulk actions.
 - [ ] Реализовать transactions endpoints.
 - [ ] Реализовать categories endpoints.
 - [ ] Реализовать merchants endpoints.

@@ -15,6 +15,10 @@
 - `POST /imports/xlsx/confirm` - подтвердить импорт выбранных операций.
 - `GET /imports` - список импортов.
 - `GET /imports/{id}` - детали импорта.
+- `GET /imports/{id}/preview-rows` - строки draft preview с фильтрами.
+- `PATCH /imports/{id}/preview-rows/{row_id}` - исправить одну preview-строку.
+- `POST /imports/{id}/bulk-actions` - массовое действие по preview-строкам.
+- `DELETE /imports/{id}` - удалить draft import.
 
 Preview должен возвращать:
 
@@ -23,6 +27,16 @@ Preview должен возвращать:
 - предполагаемого продавца;
 - признак возможного дубля;
 - ошибки разбора.
+
+Confirm должен возвращать final summary:
+
+- imported count;
+- excluded count;
+- duplicate count;
+- error count;
+- uncategorized count;
+- work/FOP count;
+- savings count.
 
 ## Transactions
 
