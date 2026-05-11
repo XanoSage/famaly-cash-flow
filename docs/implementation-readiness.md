@@ -11,6 +11,8 @@
 - есть короткий implementation plan;
 - есть минимальные wireframe-описания UI.
 
+Implementation plan хранится в [Implementation Plan](implementation-plan.md).
+
 ## Remaining Before Coding
 
 Перед первым кодовым этапом нужно:
@@ -30,4 +32,3 @@
 5. Seed system categories from [Category Taxonomy](category-taxonomy.md).
 6. Auth skeleton.
 7. XLSX parser spike on known bank format.
-

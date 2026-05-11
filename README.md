@@ -29,6 +29,7 @@
 - [Environments And CI/CD](docs/environments-and-cicd.md)
 - [API Contract Decisions](docs/api-contract-decisions.md)
 - [Implementation Readiness](docs/implementation-readiness.md)
+- [Implementation Plan](docs/implementation-plan.md)
 - [Remaining TZ Questions](docs/remaining-tz-questions.md)
 - [Learning Notes](docs/learning-notes.md)
 - [Testing](docs/testing.md)

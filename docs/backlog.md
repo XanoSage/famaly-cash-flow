@@ -38,6 +38,7 @@
 - [x] Зафиксировать API contract decisions.
 - [x] Зафиксировать DevOps/release decisions.
 - [x] Добавить минимальные UI wireframes.
+- [x] Добавить implementation plan.
 
 ## Backend
 
