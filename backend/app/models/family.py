@@ -10,7 +10,9 @@ from app.db.base import Base, created_at, updated_at, uuid_pk
 if TYPE_CHECKING:
     from app.models.account import Account
     from app.models.category import Category
+    from app.models.import_batch import ImportBatch
     from app.models.merchant import Merchant
+    from app.models.transaction import Transaction
     from app.models.user import User
 
 
@@ -26,3 +28,5 @@ class Family(Base):
     accounts: Mapped[list["Account"]] = relationship(back_populates="family")
     categories: Mapped[list["Category"]] = relationship(back_populates="family")
     merchants: Mapped[list["Merchant"]] = relationship(back_populates="family")
+    import_batches: Mapped[list["ImportBatch"]] = relationship(back_populates="family")
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="family")
