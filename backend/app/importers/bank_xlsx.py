@@ -85,29 +85,32 @@ def parse_bank_xlsx(path: str | Path) -> BankStatementParseResult:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Workbook contains no default style")
         workbook = load_workbook(source_path, read_only=True, data_only=True)
-    worksheet = workbook.worksheets[0]
+    try:
+        worksheet = workbook.worksheets[0]
 
-    header_row_number, header_positions = _find_header_row(worksheet)
-    period_start, period_end = _parse_period(_as_str(worksheet.cell(row=1, column=1).value))
+        header_row_number, header_positions = _find_header_row(worksheet)
+        period_start, period_end = _parse_period(_as_str(worksheet.cell(row=1, column=1).value))
 
-    parsed_rows: list[ParsedBankOperation] = []
-    for row in worksheet.iter_rows(min_row=header_row_number + 1, values_only=False):
-        values_by_key = {
-            key: row[column_index - 1].value
-            for key, column_index in header_positions.items()
-            if column_index <= len(row)
-        }
-        if not any(value is not None for value in values_by_key.values()):
-            continue
-        parsed_rows.append(_parse_operation(row[0].row, values_by_key))
+        parsed_rows: list[ParsedBankOperation] = []
+        for row in worksheet.iter_rows(min_row=header_row_number + 1, values_only=False):
+            values_by_key = {
+                key: row[column_index - 1].value
+                for key, column_index in header_positions.items()
+                if column_index <= len(row)
+            }
+            if not any(value is not None for value in values_by_key.values()):
+                continue
+            parsed_rows.append(_parse_operation(row[0].row, values_by_key))
 
-    summary = _build_summary(period_start, period_end, parsed_rows)
-    return BankStatementParseResult(
-        source_filename=source_path.name,
-        sheet_name=worksheet.title,
-        summary=summary,
-        rows=parsed_rows,
-    )
+        summary = _build_summary(period_start, period_end, parsed_rows)
+        return BankStatementParseResult(
+            source_filename=source_path.name,
+            sheet_name=worksheet.title,
+            summary=summary,
+            rows=parsed_rows,
+        )
+    finally:
+        workbook.close()
 
 
 def _find_header_row(worksheet: Worksheet) -> tuple[int, dict[str, int]]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -28,9 +29,12 @@ class ImportPreviewService:
         family_id: UUID,
         uploaded_by_user_id: UUID,
         path: str | Path,
+        source_filename: str | None = None,
     ) -> ImportBatch:
         self._ensure_user_belongs_to_family(family_id, uploaded_by_user_id)
         parsed_statement = parse_bank_xlsx(path)
+        if source_filename:
+            parsed_statement = replace(parsed_statement, source_filename=source_filename)
         return self.create_from_parsed_statement(
             family_id=family_id,
             uploaded_by_user_id=uploaded_by_user_id,
