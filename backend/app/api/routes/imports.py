@@ -56,7 +56,42 @@ def create_import_preview(
     ).all()
     status_counts = Counter(all_statuses)
 
-    return _to_response(import_batch, rows, status_counts)
+    return _to_response(import_batch, rows, status_counts, offset=0, limit=preview_limit)
+
+
+@router.get(
+    "/{import_batch_id}/preview",
+    response_model=ImportPreviewResponse,
+)
+def get_import_preview(
+    import_batch_id: UUID,
+    family_id: UUID = Query(...),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    row_status: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> ImportPreviewResponse:
+    import_batch = db.scalar(
+        select(ImportBatch).where(
+            ImportBatch.id == import_batch_id,
+            ImportBatch.family_id == family_id,
+        )
+    )
+    if import_batch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import preview not found.")
+
+    rows_query = select(ImportPreviewRow).where(ImportPreviewRow.import_batch_id == import_batch.id)
+    if row_status is not None:
+        rows_query = rows_query.where(ImportPreviewRow.status == row_status)
+    rows_query = rows_query.order_by(ImportPreviewRow.row_number).offset(offset).limit(limit)
+
+    rows = db.scalars(rows_query).all()
+    all_statuses = db.scalars(
+        select(ImportPreviewRow.status).where(ImportPreviewRow.import_batch_id == import_batch.id)
+    ).all()
+    status_counts = Counter(all_statuses)
+
+    return _to_response(import_batch, rows, status_counts, offset=offset, limit=limit)
 
 
 def _validate_xlsx_upload(file: UploadFile) -> None:
@@ -78,6 +113,9 @@ def _to_response(
     import_batch: ImportBatch,
     rows: list[ImportPreviewRow],
     status_counts: Counter[str],
+    *,
+    offset: int,
+    limit: int,
 ) -> ImportPreviewResponse:
     row_responses = [
         ImportPreviewRowResponse(
@@ -112,6 +150,8 @@ def _to_response(
             period_end=import_batch.period_end,
             total_rows=import_batch.total_rows,
             returned_rows=len(row_responses),
+            offset=offset,
+            limit=limit,
             auto_ready_count=status_counts["auto_ready"],
             needs_review_count=status_counts["needs_review"],
             imported_count=import_batch.imported_count,

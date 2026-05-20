@@ -66,11 +66,79 @@ def test_create_import_preview_uploads_xlsx(client: TestClient, db_session: Sess
     assert payload["summary"]["status"] == "draft"
     assert payload["summary"]["total_rows"] == 2
     assert payload["summary"]["returned_rows"] == 1
+    assert payload["summary"]["offset"] == 0
+    assert payload["summary"]["limit"] == 1
     assert payload["summary"]["auto_ready_count"] == 1
     assert payload["summary"]["needs_review_count"] == 1
     assert payload["rows"][0]["merchant_name"] == "Сільпо"
 
     assert db_session.query(ImportBatch).count() == 1
+
+
+def test_get_import_preview_reopens_saved_draft(client: TestClient, db_session: Session) -> None:
+    family, user = _create_family_and_user(db_session)
+    upload_response = _upload_statement_preview(client, family, user)
+    import_batch_id = upload_response.json()["summary"]["import_batch_id"]
+
+    response = client.get(
+        f"/api/v1/imports/{import_batch_id}/preview",
+        params={
+            "family_id": str(family.id),
+            "offset": 1,
+            "limit": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["import_batch_id"] == import_batch_id
+    assert payload["summary"]["total_rows"] == 2
+    assert payload["summary"]["returned_rows"] == 1
+    assert payload["summary"]["offset"] == 1
+    assert payload["summary"]["limit"] == 1
+    assert payload["rows"][0]["row_number"] == 4
+
+
+def test_get_import_preview_filters_by_status(client: TestClient, db_session: Session) -> None:
+    family, user = _create_family_and_user(db_session)
+    upload_response = _upload_statement_preview(client, family, user)
+    import_batch_id = upload_response.json()["summary"]["import_batch_id"]
+
+    response = client.get(
+        f"/api/v1/imports/{import_batch_id}/preview",
+        params={
+            "family_id": str(family.id),
+            "row_status": "needs_review",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["returned_rows"] == 1
+    assert payload["summary"]["auto_ready_count"] == 1
+    assert payload["summary"]["needs_review_count"] == 1
+    assert payload["rows"][0]["status"] == "needs_review"
+    assert payload["rows"][0]["reason_codes"] == ["person_transfer"]
+
+
+def test_get_import_preview_returns_404_for_other_family(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    family, user = _create_family_and_user(db_session)
+    other_family = Family(name="Other")
+    db_session.add(other_family)
+    db_session.commit()
+    upload_response = _upload_statement_preview(client, family, user)
+    import_batch_id = upload_response.json()["summary"]["import_batch_id"]
+
+    response = client.get(
+        f"/api/v1/imports/{import_batch_id}/preview",
+        params={"family_id": str(other_family.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Import preview not found."
 
 
 def test_create_import_preview_rejects_non_xlsx(client: TestClient, db_session: Session) -> None:
@@ -134,6 +202,23 @@ def _create_family_and_user(db_session: Session) -> tuple[Family, User]:
     db_session.add_all([family, user])
     db_session.commit()
     return family, user
+
+
+def _upload_statement_preview(client: TestClient, family: Family, user: User):
+    return client.post(
+        "/api/v1/imports/preview",
+        params={
+            "family_id": str(family.id),
+            "uploaded_by_user_id": str(user.id),
+        },
+        files={
+            "file": (
+                "statement.xlsx",
+                _make_statement_xlsx(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
 
 
 def _make_statement_xlsx() -> bytes:
