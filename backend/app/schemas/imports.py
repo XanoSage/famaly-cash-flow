@@ -16,6 +16,8 @@ class ImportPreviewSummary(BaseModel):
     period_end: datetime | None
     total_rows: int
     returned_rows: int
+    offset: int
+    limit: int
     auto_ready_count: int
     needs_review_count: int
     imported_count: int
