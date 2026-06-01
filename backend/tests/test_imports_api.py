@@ -12,8 +12,10 @@ from app import models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.account import Account
 from app.models.family import Family
 from app.models.import_batch import ImportBatch
+from app.models.transaction import Transaction
 from app.models.user import User
 
 
@@ -141,6 +143,28 @@ def test_get_import_preview_returns_404_for_other_family(
     assert response.json()["detail"] == "Import preview not found."
 
 
+def test_confirm_import_preview_creates_transactions(client: TestClient, db_session: Session) -> None:
+    family, user = _create_family_and_user(db_session)
+    account = _create_account(db_session, family, user)
+    upload_response = _upload_statement_preview(client, family, user)
+    import_batch_id = upload_response.json()["summary"]["import_batch_id"]
+
+    response = client.post(
+        f"/api/v1/imports/{import_batch_id}/confirm",
+        params={
+            "family_id": str(family.id),
+            "account_id": str(account.id),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["import_batch_id"] == import_batch_id
+    assert payload["status"] == "confirmed"
+    assert payload["created_transactions"] == 2
+    assert db_session.query(Transaction).count() == 2
+
+
 def test_create_import_preview_rejects_non_xlsx(client: TestClient, db_session: Session) -> None:
     family, user = _create_family_and_user(db_session)
 
@@ -202,6 +226,19 @@ def _create_family_and_user(db_session: Session) -> tuple[Family, User]:
     db_session.add_all([family, user])
     db_session.commit()
     return family, user
+
+
+def _create_account(db_session: Session, family: Family, user: User) -> Account:
+    account = Account(
+        family=family,
+        owner_user=user,
+        type="card",
+        name="Main card",
+        currency="UAH",
+    )
+    db_session.add(account)
+    db_session.commit()
+    return account
 
 
 def _upload_statement_preview(client: TestClient, family: Family, user: User):

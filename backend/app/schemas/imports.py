@@ -57,3 +57,9 @@ class ImportPreviewRowResponse(BaseModel):
 class ImportPreviewResponse(BaseModel):
     summary: ImportPreviewSummary
     rows: list[ImportPreviewRowResponse]
+
+
+class ConfirmImportResponse(BaseModel):
+    import_batch_id: UUID
+    status: str
+    created_transactions: int
