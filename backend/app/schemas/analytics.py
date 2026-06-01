@@ -35,3 +35,19 @@ class MerchantAnalyticsResponse(BaseModel):
     total_amount: Decimal
     total_transactions: int
     rows: list[MerchantAnalyticsRowResponse]
+
+
+class CategoryAnalyticsRowResponse(BaseModel):
+    category_id: str | None
+    category_name: str
+    subcategory_id: str | None
+    subcategory_name: str | None
+    amount: Decimal
+    transaction_count: int
+    share_percent: Decimal
+
+
+class CategoryAnalyticsResponse(BaseModel):
+    total_amount: Decimal
+    total_transactions: int
+    rows: list[CategoryAnalyticsRowResponse]
