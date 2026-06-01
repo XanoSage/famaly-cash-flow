@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.importers.bank_xlsx import BankXlsxParseError
 from app.models.import_batch import ImportBatch, ImportPreviewRow
-from app.schemas.imports import ImportPreviewResponse, ImportPreviewRowResponse, ImportPreviewSummary
+from app.schemas.imports import (
+    ConfirmImportResponse,
+    ImportPreviewResponse,
+    ImportPreviewRowResponse,
+    ImportPreviewSummary,
+)
+from app.services.confirm_import import ConfirmImportError, ConfirmImportService
 from app.services.import_preview import ImportPreviewError, ImportPreviewService
 
 router = APIRouter(prefix="/imports")
@@ -92,6 +98,34 @@ def get_import_preview(
     status_counts = Counter(all_statuses)
 
     return _to_response(import_batch, rows, status_counts, offset=offset, limit=limit)
+
+
+@router.post(
+    "/{import_batch_id}/confirm",
+    response_model=ConfirmImportResponse,
+)
+def confirm_import_preview(
+    import_batch_id: UUID,
+    family_id: UUID = Query(...),
+    account_id: UUID = Query(...),
+    owner_user_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+) -> ConfirmImportResponse:
+    try:
+        transactions = ConfirmImportService(db).confirm(
+            family_id=family_id,
+            import_batch_id=import_batch_id,
+            account_id=account_id,
+            owner_user_id=owner_user_id,
+        )
+    except ConfirmImportError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return ConfirmImportResponse(
+        import_batch_id=import_batch_id,
+        status="confirmed",
+        created_transactions=len(transactions),
+    )
 
 
 def _validate_xlsx_upload(file: UploadFile) -> None:
