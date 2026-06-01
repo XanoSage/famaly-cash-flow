@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -51,3 +52,22 @@ class CategoryAnalyticsResponse(BaseModel):
     total_amount: Decimal
     total_transactions: int
     rows: list[CategoryAnalyticsRowResponse]
+
+
+class TimelineBucketResponse(BaseModel):
+    period: date
+    income: Decimal
+    expenses: Decimal
+    savings: Decimal
+    transfers: Decimal
+    net_cash_flow: Decimal
+    transaction_count: int
+    expense_count: int
+    income_count: int
+    savings_count: int
+    transfer_count: int
+
+
+class TimelineAnalyticsResponse(BaseModel):
+    granularity: str
+    rows: list[TimelineBucketResponse]
