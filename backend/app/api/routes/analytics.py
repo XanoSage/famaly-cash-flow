@@ -6,11 +6,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.analytics.categories import CategoryAnalyticsService
 from app.analytics.merchants import MerchantAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
 from app.db.session import get_db
 from app.schemas.analytics import (
     AnalyticsSummaryResponse,
+    CategoryAnalyticsResponse,
+    CategoryAnalyticsRowResponse,
     MerchantAnalyticsResponse,
     MerchantAnalyticsRowResponse,
 )
@@ -82,6 +85,46 @@ def get_analytics_by_merchant(
                 merchant_id=str(row.merchant_id),
                 merchant_name=row.merchant_name,
                 merchant_type=row.merchant_type,
+                amount=row.amount,
+                transaction_count=row.transaction_count,
+                share_percent=row.share_percent,
+            )
+            for row in analytics.rows
+        ],
+    )
+
+
+@router.get("/by-category", response_model=CategoryAnalyticsResponse)
+def get_analytics_by_category(
+    family_id: UUID = Query(...),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
+    account_id: UUID | None = Query(None),
+    scope: str | None = Query(None),
+    include_subcategories: bool = Query(False),
+    limit: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("amount", pattern="^(amount|count)$"),
+    db: Session = Depends(get_db),
+) -> CategoryAnalyticsResponse:
+    analytics = CategoryAnalyticsService(db).build(
+        family_id=family_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        account_id=account_id,
+        scope=scope,
+        include_subcategories=include_subcategories,
+        limit=limit,
+        sort_by=sort_by,
+    )
+    return CategoryAnalyticsResponse(
+        total_amount=analytics.total_amount,
+        total_transactions=analytics.total_transactions,
+        rows=[
+            CategoryAnalyticsRowResponse(
+                category_id=str(row.category_id) if row.category_id else None,
+                category_name=row.category_name,
+                subcategory_id=str(row.subcategory_id) if row.subcategory_id else None,
+                subcategory_name=row.subcategory_name,
                 amount=row.amount,
                 transaction_count=row.transaction_count,
                 share_percent=row.share_percent,
