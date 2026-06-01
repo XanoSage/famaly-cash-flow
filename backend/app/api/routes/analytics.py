@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.analytics.categories import CategoryAnalyticsService
 from app.analytics.merchants import MerchantAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
+from app.analytics.timeline import TimelineAnalyticsService
 from app.db.session import get_db
 from app.schemas.analytics import (
     AnalyticsSummaryResponse,
@@ -16,6 +17,8 @@ from app.schemas.analytics import (
     CategoryAnalyticsRowResponse,
     MerchantAnalyticsResponse,
     MerchantAnalyticsRowResponse,
+    TimelineAnalyticsResponse,
+    TimelineBucketResponse,
 )
 
 router = APIRouter(prefix="/analytics")
@@ -128,6 +131,45 @@ def get_analytics_by_category(
                 amount=row.amount,
                 transaction_count=row.transaction_count,
                 share_percent=row.share_percent,
+            )
+            for row in analytics.rows
+        ],
+    )
+
+
+@router.get("/timeline", response_model=TimelineAnalyticsResponse)
+def get_analytics_timeline(
+    family_id: UUID = Query(...),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
+    account_id: UUID | None = Query(None),
+    scope: str | None = Query(None),
+    granularity: str = Query("day", pattern="^day$"),
+    db: Session = Depends(get_db),
+) -> TimelineAnalyticsResponse:
+    analytics = TimelineAnalyticsService(db).build(
+        family_id=family_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        account_id=account_id,
+        scope=scope,
+        granularity=granularity,
+    )
+    return TimelineAnalyticsResponse(
+        granularity=analytics.granularity,
+        rows=[
+            TimelineBucketResponse(
+                period=row.period,
+                income=row.income,
+                expenses=row.expenses,
+                savings=row.savings,
+                transfers=row.transfers,
+                net_cash_flow=row.net_cash_flow,
+                transaction_count=row.transaction_count,
+                expense_count=row.expense_count,
+                income_count=row.income_count,
+                savings_count=row.savings_count,
+                transfer_count=row.transfer_count,
             )
             for row in analytics.rows
         ],
