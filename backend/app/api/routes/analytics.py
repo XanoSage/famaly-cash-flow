@@ -6,9 +6,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.analytics.merchants import MerchantAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
 from app.db.session import get_db
-from app.schemas.analytics import AnalyticsSummaryResponse
+from app.schemas.analytics import (
+    AnalyticsSummaryResponse,
+    MerchantAnalyticsResponse,
+    MerchantAnalyticsRowResponse,
+)
 
 router = APIRouter(prefix="/analytics")
 
@@ -44,4 +49,43 @@ def get_analytics_summary(
         needs_review_count=summary.needs_review_count,
         uncategorized_count=summary.uncategorized_count,
         work_fop_count=summary.work_fop_count,
+    )
+
+
+@router.get("/by-merchant", response_model=MerchantAnalyticsResponse)
+def get_analytics_by_merchant(
+    family_id: UUID = Query(...),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
+    account_id: UUID | None = Query(None),
+    category_id: UUID | None = Query(None),
+    scope: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=100),
+    sort_by: str = Query("amount", pattern="^(amount|count)$"),
+    db: Session = Depends(get_db),
+) -> MerchantAnalyticsResponse:
+    analytics = MerchantAnalyticsService(db).build(
+        family_id=family_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        account_id=account_id,
+        category_id=category_id,
+        scope=scope,
+        limit=limit,
+        sort_by=sort_by,
+    )
+    return MerchantAnalyticsResponse(
+        total_amount=analytics.total_amount,
+        total_transactions=analytics.total_transactions,
+        rows=[
+            MerchantAnalyticsRowResponse(
+                merchant_id=str(row.merchant_id),
+                merchant_name=row.merchant_name,
+                merchant_type=row.merchant_type,
+                amount=row.amount,
+                transaction_count=row.transaction_count,
+                share_percent=row.share_percent,
+            )
+            for row in analytics.rows
+        ],
     )

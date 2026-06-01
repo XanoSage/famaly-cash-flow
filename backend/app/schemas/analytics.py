@@ -20,3 +20,18 @@ class AnalyticsSummaryResponse(BaseModel):
     needs_review_count: int
     uncategorized_count: int
     work_fop_count: int
+
+
+class MerchantAnalyticsRowResponse(BaseModel):
+    merchant_id: str
+    merchant_name: str
+    merchant_type: str
+    amount: Decimal
+    transaction_count: int
+    share_percent: Decimal
+
+
+class MerchantAnalyticsResponse(BaseModel):
+    total_amount: Decimal
+    total_transactions: int
+    rows: list[MerchantAnalyticsRowResponse]
