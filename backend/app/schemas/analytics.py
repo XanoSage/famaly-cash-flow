@@ -73,8 +73,22 @@ class TimelineAnalyticsResponse(BaseModel):
     rows: list[TimelineBucketResponse]
 
 
+class AnalyticsInsightResponse(BaseModel):
+    code: str
+    title: str
+    message: str
+    severity: str
+    metric_name: str | None
+    metric_value: Decimal | None
+
+
+class AnalyticsInsightsResponse(BaseModel):
+    rows: list[AnalyticsInsightResponse]
+
+
 class AnalyticsDashboardResponse(BaseModel):
     summary: AnalyticsSummaryResponse
     timeline: TimelineAnalyticsResponse
     top_categories: CategoryAnalyticsResponse
     top_merchants: MerchantAnalyticsResponse
+    insights: AnalyticsInsightsResponse
