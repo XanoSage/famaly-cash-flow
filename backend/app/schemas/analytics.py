@@ -71,3 +71,10 @@ class TimelineBucketResponse(BaseModel):
 class TimelineAnalyticsResponse(BaseModel):
     granularity: str
     rows: list[TimelineBucketResponse]
+
+
+class AnalyticsDashboardResponse(BaseModel):
+    summary: AnalyticsSummaryResponse
+    timeline: TimelineAnalyticsResponse
+    top_categories: CategoryAnalyticsResponse
+    top_merchants: MerchantAnalyticsResponse
