@@ -7,12 +7,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.analytics.categories import CategoryAnalyticsService
+from app.analytics.insights import AnalyticsInsightsService
 from app.analytics.merchants import MerchantAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
 from app.analytics.timeline import TimelineAnalyticsService
 from app.db.session import get_db
 from app.schemas.analytics import (
     AnalyticsDashboardResponse,
+    AnalyticsInsightResponse,
+    AnalyticsInsightsResponse,
     AnalyticsSummaryResponse,
     CategoryAnalyticsResponse,
     CategoryAnalyticsRowResponse,
@@ -147,12 +150,35 @@ def get_analytics_dashboard(
         limit=merchant_limit,
         sort_by="amount",
     )
+    insights = AnalyticsInsightsService(db).build(**common_filters, limit=5)
     return AnalyticsDashboardResponse(
         summary=_summary_response(summary),
         timeline=_timeline_response(timeline),
         top_categories=_category_response(top_categories),
         top_merchants=_merchant_response(top_merchants),
+        insights=_insights_response(insights),
     )
+
+
+@router.get("/insights", response_model=AnalyticsInsightsResponse)
+def get_analytics_insights(
+    family_id: UUID = Query(...),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
+    account_id: UUID | None = Query(None),
+    scope: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> AnalyticsInsightsResponse:
+    insights = AnalyticsInsightsService(db).build(
+        family_id=family_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        account_id=account_id,
+        scope=scope,
+        limit=limit,
+    )
+    return _insights_response(insights)
 
 
 def _summary_response(summary) -> AnalyticsSummaryResponse:
@@ -230,4 +256,20 @@ def _timeline_response(analytics) -> TimelineAnalyticsResponse:
             )
             for row in analytics.rows
         ],
+    )
+
+
+def _insights_response(insights) -> AnalyticsInsightsResponse:
+    return AnalyticsInsightsResponse(
+        rows=[
+            AnalyticsInsightResponse(
+                code=row.code,
+                title=row.title,
+                message=row.message,
+                severity=row.severity,
+                metric_name=row.metric_name,
+                metric_value=row.metric_value,
+            )
+            for row in insights.rows
+        ]
     )
