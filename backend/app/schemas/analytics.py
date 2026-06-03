@@ -86,6 +86,26 @@ class AnalyticsInsightsResponse(BaseModel):
     rows: list[AnalyticsInsightResponse]
 
 
+class SavingsTimelineBucketResponse(BaseModel):
+    period: date
+    savings: Decimal
+    expenses: Decimal
+    savings_count: int
+    expense_count: int
+
+
+class SavingsAnalyticsResponse(BaseModel):
+    total_savings: Decimal
+    total_expenses: Decimal
+    savings_count: int
+    expense_count: int
+    savings_to_expenses_percent: Decimal
+    average_daily_savings: Decimal
+    projected_yearly_savings: Decimal
+    period_days: int
+    rows: list[SavingsTimelineBucketResponse]
+
+
 class AnalyticsDashboardResponse(BaseModel):
     summary: AnalyticsSummaryResponse
     timeline: TimelineAnalyticsResponse

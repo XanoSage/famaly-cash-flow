@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.analytics.categories import CategoryAnalyticsService
 from app.analytics.insights import AnalyticsInsightsService
 from app.analytics.merchants import MerchantAnalyticsService
+from app.analytics.savings import SavingsAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
 from app.analytics.timeline import TimelineAnalyticsService
 from app.db.session import get_db
@@ -21,6 +22,8 @@ from app.schemas.analytics import (
     CategoryAnalyticsRowResponse,
     MerchantAnalyticsResponse,
     MerchantAnalyticsRowResponse,
+    SavingsAnalyticsResponse,
+    SavingsTimelineBucketResponse,
     TimelineAnalyticsResponse,
     TimelineBucketResponse,
 )
@@ -181,6 +184,25 @@ def get_analytics_insights(
     return _insights_response(insights)
 
 
+@router.get("/savings", response_model=SavingsAnalyticsResponse)
+def get_analytics_savings(
+    family_id: UUID = Query(...),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
+    account_id: UUID | None = Query(None),
+    scope: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> SavingsAnalyticsResponse:
+    savings = SavingsAnalyticsService(db).build(
+        family_id=family_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        account_id=account_id,
+        scope=scope,
+    )
+    return _savings_response(savings)
+
+
 def _summary_response(summary) -> AnalyticsSummaryResponse:
     return AnalyticsSummaryResponse(
         income=summary.income,
@@ -272,4 +294,27 @@ def _insights_response(insights) -> AnalyticsInsightsResponse:
             )
             for row in insights.rows
         ]
+    )
+
+
+def _savings_response(savings) -> SavingsAnalyticsResponse:
+    return SavingsAnalyticsResponse(
+        total_savings=savings.total_savings,
+        total_expenses=savings.total_expenses,
+        savings_count=savings.savings_count,
+        expense_count=savings.expense_count,
+        savings_to_expenses_percent=savings.savings_to_expenses_percent,
+        average_daily_savings=savings.average_daily_savings,
+        projected_yearly_savings=savings.projected_yearly_savings,
+        period_days=savings.period_days,
+        rows=[
+            SavingsTimelineBucketResponse(
+                period=row.period,
+                savings=row.savings,
+                expenses=row.expenses,
+                savings_count=row.savings_count,
+                expense_count=row.expense_count,
+            )
+            for row in savings.rows
+        ],
     )
