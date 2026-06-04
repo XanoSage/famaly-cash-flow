@@ -106,6 +106,13 @@ class SavingsAnalyticsResponse(BaseModel):
     rows: list[SavingsTimelineBucketResponse]
 
 
+class WorkFopAnalyticsResponse(BaseModel):
+    summary: AnalyticsSummaryResponse
+    timeline: TimelineAnalyticsResponse
+    top_categories: CategoryAnalyticsResponse
+    top_merchants: MerchantAnalyticsResponse
+
+
 class AnalyticsDashboardResponse(BaseModel):
     summary: AnalyticsSummaryResponse
     timeline: TimelineAnalyticsResponse

@@ -12,6 +12,7 @@ from app.analytics.merchants import MerchantAnalyticsService
 from app.analytics.savings import SavingsAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
 from app.analytics.timeline import TimelineAnalyticsService
+from app.analytics.work_fop import WorkFopAnalyticsService
 from app.db.session import get_db
 from app.schemas.analytics import (
     AnalyticsDashboardResponse,
@@ -26,6 +27,7 @@ from app.schemas.analytics import (
     SavingsTimelineBucketResponse,
     TimelineAnalyticsResponse,
     TimelineBucketResponse,
+    WorkFopAnalyticsResponse,
 )
 
 router = APIRouter(prefix="/analytics")
@@ -203,6 +205,27 @@ def get_analytics_savings(
     return _savings_response(savings)
 
 
+@router.get("/work-fop", response_model=WorkFopAnalyticsResponse)
+def get_analytics_work_fop(
+    family_id: UUID = Query(...),
+    occurred_from: datetime | None = Query(None),
+    occurred_to: datetime | None = Query(None),
+    account_id: UUID | None = Query(None),
+    category_limit: int = Query(5, ge=1, le=20),
+    merchant_limit: int = Query(5, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> WorkFopAnalyticsResponse:
+    analytics = WorkFopAnalyticsService(db).build(
+        family_id=family_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        account_id=account_id,
+        category_limit=category_limit,
+        merchant_limit=merchant_limit,
+    )
+    return _work_fop_response(analytics)
+
+
 def _summary_response(summary) -> AnalyticsSummaryResponse:
     return AnalyticsSummaryResponse(
         income=summary.income,
@@ -317,4 +340,13 @@ def _savings_response(savings) -> SavingsAnalyticsResponse:
             )
             for row in savings.rows
         ],
+    )
+
+
+def _work_fop_response(analytics) -> WorkFopAnalyticsResponse:
+    return WorkFopAnalyticsResponse(
+        summary=_summary_response(analytics.summary),
+        timeline=_timeline_response(analytics.timeline),
+        top_categories=_category_response(analytics.top_categories),
+        top_merchants=_merchant_response(analytics.top_merchants),
     )
