@@ -23,6 +23,16 @@ Start PostgreSQL:
 docker compose up -d postgres
 ```
 
+## Demo Dashboard Data
+
+After migrations, create or refresh demo data for the frontend dashboard:
+
+```bash
+python -m app.db.seed_demo_dashboard
+```
+
+The command prints a `family_id`. Paste it into the frontend dashboard filter.
+
 Local PostgreSQL is exposed on port `5433` to avoid conflicts with a PostgreSQL instance installed on Windows.
 
 Run tests:
