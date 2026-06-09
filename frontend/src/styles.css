@@ -97,6 +97,12 @@ h1 {
   min-width: 0;
 }
 
+.field small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 input,
 select {
   background: #ffffff;

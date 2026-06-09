@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -110,6 +110,7 @@ type LoadState =
   | { status: "error"; data: Dashboard | null; error: string };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const copy = {
   ru: {
@@ -126,8 +127,14 @@ const copy = {
     loading: "Загружаю аналитику...",
     emptyTitle: "Введите Family ID",
     emptyText: "После импорта выписки сюда можно вставить id семьи и увидеть dashboard.",
+    savedFamilyIdHint: "Family ID сохраняется в этом браузере и загрузится автоматически при следующем открытии.",
     errorTitle: "Не удалось загрузить dashboard",
     apiHint: "Проверь, что backend запущен и VITE_API_BASE_URL указывает на API.",
+    invalidFamilyId: "Family ID должен быть UUID в формате 00000000-0000-0000-0000-000000000000.",
+    networkError: "Не удалось достучаться до backend. Проверь, что FastAPI запущен на 8000 порту.",
+    notFoundError: "Для этого Family ID данные не найдены. Проверь id или заново запусти demo seed.",
+    serverError: "Backend ответил ошибкой. Проверь, что PostgreSQL запущен и миграции применены.",
+    unknownError: "Неизвестная ошибка загрузки dashboard.",
     income: "Доходы",
     expenses: "Расходы",
     savings: "Накопления",
@@ -156,8 +163,14 @@ const copy = {
     loading: "Завантажую аналітику...",
     emptyTitle: "Введіть Family ID",
     emptyText: "Після імпорту виписки сюди можна вставити id сім'ї та побачити dashboard.",
+    savedFamilyIdHint: "Family ID зберігається у цьому браузері та завантажиться автоматично при наступному відкритті.",
     errorTitle: "Не вдалося завантажити dashboard",
     apiHint: "Перевір, що backend запущений і VITE_API_BASE_URL вказує на API.",
+    invalidFamilyId: "Family ID має бути UUID у форматі 00000000-0000-0000-0000-000000000000.",
+    networkError: "Не вдалося підключитися до backend. Перевір, що FastAPI запущений на 8000 порту.",
+    notFoundError: "Для цього Family ID дані не знайдені. Перевір id або заново запусти demo seed.",
+    serverError: "Backend відповів помилкою. Перевір, що PostgreSQL запущений і міграції застосовані.",
+    unknownError: "Невідома помилка завантаження dashboard.",
     income: "Доходи",
     expenses: "Витрати",
     savings: "Накопичення",
@@ -181,6 +194,7 @@ export function App() {
   const [occurredTo, setOccurredTo] = useState("");
   const [scope, setScope] = useState<ScopeFilter>("family");
   const [state, setState] = useState<LoadState>({ status: "idle", data: null, error: null });
+  const hasAutoLoadedRef = useRef(false);
 
   const t = copy[locale];
   const formatter = useMemo(
@@ -201,16 +215,32 @@ export function App() {
     localStorage.setItem("locale", locale);
   }, [locale]);
 
+  useEffect(() => {
+    if (!hasAutoLoadedRef.current && familyId.trim()) {
+      hasAutoLoadedRef.current = true;
+      void loadDashboard();
+    }
+  }, []);
+
   async function loadDashboard() {
-    if (!familyId.trim()) {
+    const normalizedFamilyId = familyId.trim();
+    if (!normalizedFamilyId) {
       setState({ status: "idle", data: null, error: null });
+      return;
+    }
+    if (!UUID_PATTERN.test(normalizedFamilyId)) {
+      setState((current) => ({
+        status: "error",
+        data: current.data,
+        error: t.invalidFamilyId,
+      }));
       return;
     }
 
     setState((current) => ({ status: "loading", data: current.data, error: null }));
     try {
       const url = new URL(`${API_BASE_URL}/analytics/dashboard`);
-      url.searchParams.set("family_id", familyId.trim());
+      url.searchParams.set("family_id", normalizedFamilyId);
       if (occurredFrom) {
         url.searchParams.set("occurred_from", `${occurredFrom}T00:00:00`);
       }
@@ -223,7 +253,7 @@ export function App() {
 
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
+        throw new Error(dashboardErrorMessage(response.status, t));
       }
       const data = (await response.json()) as Dashboard;
       setState({ status: "success", data, error: null });
@@ -231,7 +261,7 @@ export function App() {
       setState((current) => ({
         status: "error",
         data: current.data,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof TypeError ? t.networkError : errorMessage(error, t.unknownError),
       }));
     }
   }
@@ -269,6 +299,7 @@ export function App() {
             onChange={(event) => setFamilyId(event.target.value)}
             placeholder="00000000-0000-0000-0000-000000000000"
           />
+          <small>{t.savedFamilyIdHint}</small>
         </label>
         <label className="field">
           <span>{t.from}</span>
@@ -524,6 +555,20 @@ function toChartRows(rows: TimelineRow[]) {
     expenses: Number(row.expenses),
     savings: Number(row.savings),
   }));
+}
+
+function dashboardErrorMessage(status: number, t: Record<string, string>) {
+  if (status === 404) {
+    return t.notFoundError;
+  }
+  if (status >= 500) {
+    return t.serverError;
+  }
+  return `${status}: ${t.unknownError}`;
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function readStoredValue(key: string, fallback: string) {
