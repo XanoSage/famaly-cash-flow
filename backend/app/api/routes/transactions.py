@@ -46,7 +46,7 @@ def list_transactions(
 
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = db.scalars(
-        query.options(joinedload(Transaction.merchant))
+        query.options(joinedload(Transaction.merchant), joinedload(Transaction.category))
         .order_by(Transaction.occurred_at.desc(), Transaction.id.desc())
         .offset(offset)
         .limit(limit)
@@ -118,6 +118,7 @@ def _to_response(transaction: Transaction) -> TransactionResponse:
         merchant_id=transaction.merchant_id,
         merchant_name=transaction.merchant.name if transaction.merchant else None,
         category_id=transaction.category_id,
+        category_name=transaction.category.name if transaction.category else None,
         subcategory_id=transaction.subcategory_id,
         comment=transaction.comment,
         is_cash=transaction.is_cash,

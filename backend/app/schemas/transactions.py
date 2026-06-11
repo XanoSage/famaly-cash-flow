@@ -30,6 +30,7 @@ class TransactionResponse(BaseModel):
     merchant_id: UUID | None
     merchant_name: str | None
     category_id: UUID | None
+    category_name: str | None
     subcategory_id: UUID | None
     comment: str | None
     is_cash: bool

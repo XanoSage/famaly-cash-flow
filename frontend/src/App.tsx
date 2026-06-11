@@ -5,6 +5,7 @@ import {
   Filter,
   PiggyBank,
   RefreshCw,
+  ReceiptText,
   Store,
   Tags,
   TrendingUp,
@@ -103,11 +104,39 @@ type Dashboard = {
   };
 };
 
+type TransactionRow = {
+  id: string;
+  occurred_at: string;
+  amount: string;
+  currency: string;
+  direction: string;
+  flow_type: string;
+  scope: string;
+  description_raw: string | null;
+  merchant_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  needs_review: boolean;
+};
+
+type TransactionList = {
+  total: number;
+  offset: number;
+  limit: number;
+  rows: TransactionRow[];
+};
+
 type LoadState =
   | { status: "idle"; data: null; error: null }
   | { status: "loading"; data: Dashboard | null; error: null }
   | { status: "success"; data: Dashboard; error: null }
   | { status: "error"; data: Dashboard | null; error: string };
+
+type TransactionsState =
+  | { status: "idle"; data: null; error: null }
+  | { status: "loading"; data: TransactionList | null; error: null }
+  | { status: "success"; data: TransactionList; error: null }
+  | { status: "error"; data: TransactionList | null; error: string };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -143,6 +172,15 @@ const copy = {
     insights: "Подсказки",
     categories: "Категории",
     merchants: "Места покупок",
+    recentTransactions: "Последние операции",
+    reviewBadge: "на проверку",
+    noCategory: "без категории",
+    transactionDate: "Дата",
+    transactionDetails: "Описание",
+    transactionScope: "Слой",
+    transactionAmount: "Сумма",
+    transactionsShowing: "Показано",
+    transactionsOf: "из",
     transactions: "операций",
     uncategorized: "без категории",
     needsReview: "на проверку",
@@ -179,6 +217,15 @@ const copy = {
     insights: "Підказки",
     categories: "Категорії",
     merchants: "Місця покупок",
+    recentTransactions: "Останні операції",
+    reviewBadge: "на перевірку",
+    noCategory: "без категорії",
+    transactionDate: "Дата",
+    transactionDetails: "Опис",
+    transactionScope: "Шар",
+    transactionAmount: "Сума",
+    transactionsShowing: "Показано",
+    transactionsOf: "з",
     transactions: "операцій",
     uncategorized: "без категорії",
     needsReview: "на перевірку",
@@ -194,6 +241,11 @@ export function App() {
   const [occurredTo, setOccurredTo] = useState("");
   const [scope, setScope] = useState<ScopeFilter>("family");
   const [state, setState] = useState<LoadState>({ status: "idle", data: null, error: null });
+  const [transactionsState, setTransactionsState] = useState<TransactionsState>({
+    status: "idle",
+    data: null,
+    error: null,
+  });
   const hasAutoLoadedRef = useRef(false);
 
   const t = copy[locale];
@@ -226,6 +278,7 @@ export function App() {
     const normalizedFamilyId = familyId.trim();
     if (!normalizedFamilyId) {
       setState({ status: "idle", data: null, error: null });
+      setTransactionsState({ status: "idle", data: null, error: null });
       return;
     }
     if (!UUID_PATTERN.test(normalizedFamilyId)) {
@@ -234,22 +287,22 @@ export function App() {
         data: current.data,
         error: t.invalidFamilyId,
       }));
+      setTransactionsState((current) => ({
+        status: "error",
+        data: current.data,
+        error: t.invalidFamilyId,
+      }));
       return;
     }
 
     setState((current) => ({ status: "loading", data: current.data, error: null }));
+    setTransactionsState((current) => ({ status: "loading", data: current.data, error: null }));
     try {
-      const url = new URL(`${API_BASE_URL}/analytics/dashboard`);
-      url.searchParams.set("family_id", normalizedFamilyId);
-      if (occurredFrom) {
-        url.searchParams.set("occurred_from", `${occurredFrom}T00:00:00`);
-      }
-      if (occurredTo) {
-        url.searchParams.set("occurred_to", `${occurredTo}T23:59:59`);
-      }
-      if (scope !== "all") {
-        url.searchParams.set("scope", scope);
-      }
+      const url = buildFilteredUrl(`${API_BASE_URL}/analytics/dashboard`, normalizedFamilyId, {
+        occurredFrom,
+        occurredTo,
+        scope,
+      });
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -259,6 +312,28 @@ export function App() {
       setState({ status: "success", data, error: null });
     } catch (error) {
       setState((current) => ({
+        status: "error",
+        data: current.data,
+        error: error instanceof TypeError ? t.networkError : errorMessage(error, t.unknownError),
+      }));
+    }
+
+    try {
+      const url = buildFilteredUrl(`${API_BASE_URL}/transactions`, normalizedFamilyId, {
+        occurredFrom,
+        occurredTo,
+        scope,
+      });
+      url.searchParams.set("limit", "20");
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(dashboardErrorMessage(response.status, t));
+      }
+      const data = (await response.json()) as TransactionList;
+      setTransactionsState({ status: "success", data, error: null });
+    } catch (error) {
+      setTransactionsState((current) => ({
         status: "error",
         data: current.data,
         error: error instanceof TypeError ? t.networkError : errorMessage(error, t.unknownError),
@@ -466,6 +541,24 @@ export function App() {
               />
             </section>
           </section>
+
+          <section className="panel">
+            <PanelTitle icon={ReceiptText} title={t.recentTransactions} />
+            {transactionsState.status === "error" && (
+              <p className="table-error">{transactionsState.error}</p>
+            )}
+            {transactionsState.status === "loading" && !transactionsState.data ? (
+              <EmptyRows text={t.loading} />
+            ) : (
+              <TransactionsTable
+                emptyText={t.noRows}
+                formatter={formatter}
+                rows={transactionsState.data?.rows ?? []}
+                t={t}
+                total={transactionsState.data?.total ?? 0}
+              />
+            )}
+          </section>
         </>
       )}
     </main>
@@ -544,8 +637,66 @@ function EmptyRows({ text }: { text: string }) {
   return <p className="empty-rows">{text}</p>;
 }
 
+function TransactionsTable({
+  rows,
+  total,
+  formatter,
+  emptyText,
+  t,
+}: {
+  rows: TransactionRow[];
+  total: number;
+  formatter: Intl.NumberFormat;
+  emptyText: string;
+  t: Record<string, string>;
+}) {
+  if (rows.length === 0) {
+    return <EmptyRows text={emptyText} />;
+  }
+
+  return (
+    <div className="transactions-block">
+      <p className="table-summary">
+        {t.transactionsShowing} {rows.length} {t.transactionsOf} {total}
+      </p>
+      <div className="transactions-table">
+        <div className="transactions-head">
+          <span>{t.transactionDate}</span>
+          <span>{t.transactionDetails}</span>
+          <span>{t.transactionScope}</span>
+          <span>{t.transactionAmount}</span>
+        </div>
+        {rows.map((row) => (
+          <article className={`transaction-row ${row.needs_review ? "transaction-review" : ""}`} key={row.id}>
+            <time dateTime={row.occurred_at}>{formatDate(row.occurred_at)}</time>
+            <div className="transaction-main">
+              <strong>{row.merchant_name ?? row.description_raw ?? row.flow_type}</strong>
+              <span>
+                {row.flow_type} / {row.category_name ?? t.noCategory}
+              </span>
+              {row.needs_review && <em>{t.reviewBadge}</em>}
+            </div>
+            <span className="scope-pill">{row.scope}</span>
+            <b className={Number(row.amount) < 0 ? "amount-negative" : "amount-positive"}>
+              {money(row.amount, formatter)}
+            </b>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function money(value: string, formatter: Intl.NumberFormat) {
   return formatter.format(Number(value));
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function toChartRows(rows: TimelineRow[]) {
@@ -555,6 +706,25 @@ function toChartRows(rows: TimelineRow[]) {
     expenses: Number(row.expenses),
     savings: Number(row.savings),
   }));
+}
+
+function buildFilteredUrl(
+  href: string,
+  familyId: string,
+  filters: { occurredFrom: string; occurredTo: string; scope: ScopeFilter },
+) {
+  const url = new URL(href);
+  url.searchParams.set("family_id", familyId);
+  if (filters.occurredFrom) {
+    url.searchParams.set("occurred_from", `${filters.occurredFrom}T00:00:00`);
+  }
+  if (filters.occurredTo) {
+    url.searchParams.set("occurred_to", `${filters.occurredTo}T23:59:59`);
+  }
+  if (filters.scope !== "all") {
+    url.searchParams.set("scope", filters.scope);
+  }
+  return url;
 }
 
 function dashboardErrorMessage(status: number, t: Record<string, string>) {
