@@ -366,6 +366,113 @@ svg {
   min-height: 84px;
 }
 
+.transactions-block {
+  display: grid;
+  gap: 10px;
+}
+
+.table-summary,
+.table-error {
+  color: #667085;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.table-error {
+  color: #b64b3f;
+  margin-bottom: 10px;
+}
+
+.transactions-table {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.transactions-head,
+.transaction-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 110px minmax(0, 1fr) 92px 140px;
+}
+
+.transactions-head {
+  background: #f7fafc;
+  color: #596579;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 10px 12px;
+  text-transform: uppercase;
+}
+
+.transaction-row {
+  align-items: center;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  min-height: 70px;
+  padding: 12px;
+}
+
+.transaction-review {
+  background: #fffaf0;
+}
+
+.transaction-row time {
+  color: #596579;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.transaction-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.transaction-main strong {
+  overflow-wrap: anywhere;
+}
+
+.transaction-main span {
+  color: #667085;
+  font-size: 13px;
+}
+
+.transaction-main em,
+.scope-pill {
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  width: fit-content;
+}
+
+.transaction-main em {
+  background: #f7dfb8;
+  color: #7a4a0d;
+  padding: 5px 8px;
+}
+
+.scope-pill {
+  background: #edf2f7;
+  color: #596579;
+  padding: 6px 9px;
+}
+
+.amount-negative,
+.amount-positive {
+  text-align: right;
+}
+
+.amount-negative {
+  color: #b64b3f;
+}
+
+.amount-positive {
+  color: #236c59;
+}
+
 @media (max-width: 980px) {
   .filters,
   .dashboard-grid,
@@ -409,6 +516,19 @@ svg {
   }
 
   .ranked-row b {
+    text-align: left;
+  }
+
+  .transactions-head {
+    display: none;
+  }
+
+  .transaction-row {
+    grid-template-columns: 1fr;
+  }
+
+  .amount-negative,
+  .amount-positive {
     text-align: left;
   }
 }

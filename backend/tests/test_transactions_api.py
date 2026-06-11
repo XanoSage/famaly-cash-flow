@@ -13,6 +13,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.account import Account
+from app.models.category import Category
 from app.models.family import Family
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
@@ -66,6 +67,7 @@ def test_list_transactions_returns_family_transactions_ordered(
     ]
     assert payload["rows"][0]["account_id"] == str(account.id)
     assert payload["rows"][0]["merchant_id"] == str(merchant.id)
+    assert payload["rows"][0]["category_name"] == "Food"
     assert payload["rows"][0]["merchant_name"] == "Сільпо"
 
 
@@ -153,6 +155,11 @@ def _seed_transactions(db_session: Session) -> tuple[Family, Account, Transactio
         normalized_name="сільпо",
         merchant_type="store",
     )
+    category = Category(
+        family=family,
+        name="Food",
+        is_system=False,
+    )
     supermarket = Transaction(
         family=family,
         account=account,
@@ -166,6 +173,7 @@ def _seed_transactions(db_session: Session) -> tuple[Family, Account, Transactio
         description_raw="Сільпо",
         description_normalized="сільпо",
         merchant=merchant,
+        category=category,
         needs_review=False,
     )
     transfer = Transaction(
@@ -196,6 +204,6 @@ def _seed_transactions(db_session: Session) -> tuple[Family, Account, Transactio
         description_normalized="скарбничка",
         needs_review=False,
     )
-    db_session.add_all([family, user, account, merchant, supermarket, transfer, savings])
+    db_session.add_all([family, user, account, merchant, category, supermarket, transfer, savings])
     db_session.commit()
     return family, account, savings, merchant
