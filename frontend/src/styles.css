@@ -287,6 +287,18 @@ svg {
   margin-bottom: 16px;
 }
 
+.panel-heading {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panel-heading .panel-title {
+  margin-bottom: 0;
+}
+
 .panel-title svg {
   color: #6e5f9f;
 }
@@ -364,6 +376,24 @@ svg {
   color: #667085;
   display: flex;
   min-height: 84px;
+}
+
+.toggle-control {
+  align-items: center;
+  color: #596579;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+}
+
+.toggle-control input {
+  accent-color: #236c59;
+  height: 16px;
+  min-height: 16px;
+  width: 16px;
 }
 
 .transactions-block {
@@ -492,6 +522,11 @@ svg {
   }
 
   .topbar {
+    flex-direction: column;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
     flex-direction: column;
   }
 
