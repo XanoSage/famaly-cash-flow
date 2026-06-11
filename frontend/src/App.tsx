@@ -173,7 +173,9 @@ const copy = {
     categories: "Категории",
     merchants: "Места покупок",
     recentTransactions: "Последние операции",
+    reviewOnly: "Только на проверку",
     reviewBadge: "на проверку",
+    reviewQueueEmpty: "Нет операций, которые требуют проверки",
     noCategory: "без категории",
     transactionDate: "Дата",
     transactionDetails: "Описание",
@@ -218,7 +220,9 @@ const copy = {
     categories: "Категорії",
     merchants: "Місця покупок",
     recentTransactions: "Останні операції",
+    reviewOnly: "Тільки на перевірку",
     reviewBadge: "на перевірку",
+    reviewQueueEmpty: "Немає операцій, які потребують перевірки",
     noCategory: "без категорії",
     transactionDate: "Дата",
     transactionDetails: "Опис",
@@ -240,6 +244,7 @@ export function App() {
   const [occurredFrom, setOccurredFrom] = useState("");
   const [occurredTo, setOccurredTo] = useState("");
   const [scope, setScope] = useState<ScopeFilter>("family");
+  const [reviewOnly, setReviewOnly] = useState(false);
   const [state, setState] = useState<LoadState>({ status: "idle", data: null, error: null });
   const [transactionsState, setTransactionsState] = useState<TransactionsState>({
     status: "idle",
@@ -273,6 +278,13 @@ export function App() {
       void loadDashboard();
     }
   }, []);
+
+  useEffect(() => {
+    const normalizedFamilyId = familyId.trim();
+    if (state.data && UUID_PATTERN.test(normalizedFamilyId)) {
+      void loadTransactions(normalizedFamilyId, reviewOnly);
+    }
+  }, [reviewOnly]);
 
   async function loadDashboard() {
     const normalizedFamilyId = familyId.trim();
@@ -318,6 +330,11 @@ export function App() {
       }));
     }
 
+    await loadTransactions(normalizedFamilyId, reviewOnly);
+  }
+
+  async function loadTransactions(normalizedFamilyId: string, onlyReview: boolean) {
+    setTransactionsState((current) => ({ status: "loading", data: current.data, error: null }));
     try {
       const url = buildFilteredUrl(`${API_BASE_URL}/transactions`, normalizedFamilyId, {
         occurredFrom,
@@ -325,6 +342,9 @@ export function App() {
         scope,
       });
       url.searchParams.set("limit", "20");
+      if (onlyReview) {
+        url.searchParams.set("needs_review", "true");
+      }
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -543,7 +563,17 @@ export function App() {
           </section>
 
           <section className="panel">
-            <PanelTitle icon={ReceiptText} title={t.recentTransactions} />
+            <div className="panel-heading">
+              <PanelTitle icon={ReceiptText} title={t.recentTransactions} />
+              <label className="toggle-control">
+                <input
+                  checked={reviewOnly}
+                  onChange={(event) => setReviewOnly(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{t.reviewOnly}</span>
+              </label>
+            </div>
             {transactionsState.status === "error" && (
               <p className="table-error">{transactionsState.error}</p>
             )}
@@ -551,7 +581,7 @@ export function App() {
               <EmptyRows text={t.loading} />
             ) : (
               <TransactionsTable
-                emptyText={t.noRows}
+                emptyText={reviewOnly ? t.reviewQueueEmpty : t.noRows}
                 formatter={formatter}
                 rows={transactionsState.data?.rows ?? []}
                 t={t}
