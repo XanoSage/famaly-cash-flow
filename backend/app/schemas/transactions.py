@@ -43,3 +43,9 @@ class TransactionListResponse(BaseModel):
     offset: int
     limit: int
     rows: list[TransactionResponse]
+
+
+class TransactionUpdateRequest(BaseModel):
+    category_id: UUID | None = None
+    comment: str | None = None
+    needs_review: bool | None = None
