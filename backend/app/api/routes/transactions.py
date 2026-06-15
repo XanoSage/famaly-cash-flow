@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
+from app.models.category import Category
 from app.models.transaction import Transaction
-from app.schemas.transactions import TransactionListResponse, TransactionResponse
+from app.schemas.transactions import TransactionListResponse, TransactionResponse, TransactionUpdateRequest
 
 router = APIRouter(prefix="/transactions")
 
@@ -60,6 +61,38 @@ def list_transactions(
     )
 
 
+@router.patch("/{transaction_id}", response_model=TransactionResponse)
+def update_transaction(
+    transaction_id: UUID,
+    payload: TransactionUpdateRequest,
+    family_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+) -> TransactionResponse:
+    transaction = db.scalar(
+        select(Transaction)
+        .options(joinedload(Transaction.merchant), joinedload(Transaction.category))
+        .where(
+            Transaction.id == transaction_id,
+            Transaction.family_id == family_id,
+            Transaction.deleted_at.is_(None),
+        )
+    )
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "category_id" in changes:
+        transaction.category = _get_category(db, family_id, payload.category_id)
+    if "comment" in changes:
+        transaction.comment = payload.comment
+    if "needs_review" in changes and payload.needs_review is not None:
+        transaction.needs_review = payload.needs_review
+
+    db.commit()
+    db.refresh(transaction)
+    return _to_response(transaction)
+
+
 def _apply_filters(
     query: Select[tuple[Transaction]],
     *,
@@ -92,6 +125,20 @@ def _apply_filters(
     if needs_review is not None:
         query = query.where(Transaction.needs_review == needs_review)
     return query
+
+
+def _get_category(db: Session, family_id: UUID, category_id: UUID | None) -> Category | None:
+    if category_id is None:
+        return None
+    category = db.scalar(
+        select(Category).where(
+            Category.id == category_id,
+            (Category.family_id == family_id) | (Category.family_id.is_(None)),
+        )
+    )
+    if category is None:
+        raise HTTPException(status_code=400, detail="Category not found for family")
+    return category
 
 
 def _to_response(transaction: Transaction) -> TransactionResponse:

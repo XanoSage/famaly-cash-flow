@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -132,6 +132,45 @@ def test_list_transactions_filters_by_date_range(client: TestClient, db_session:
     payload = response.json()
     assert payload["total"] == 2
     assert {row["description_raw"] for row in payload["rows"]} == {"Сільпо", "Переказ на картку"}
+
+
+def test_update_transaction_clears_review_flag(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    family, _, _, _ = _seed_transactions(db_session)
+    transaction = db_session.scalar(select(Transaction).where(Transaction.needs_review.is_(True)))
+    assert transaction is not None
+
+    response = client.patch(
+        f"/api/v1/transactions/{transaction.id}",
+        params={"family_id": str(family.id)},
+        json={"needs_review": False, "comment": "Checked"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["needs_review"] is False
+    assert payload["comment"] == "Checked"
+
+    db_session.refresh(transaction)
+    assert transaction.needs_review is False
+    assert transaction.comment == "Checked"
+
+
+def test_update_transaction_requires_matching_family(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _, _, transaction, _ = _seed_transactions(db_session)
+
+    response = client.patch(
+        f"/api/v1/transactions/{transaction.id}",
+        params={"family_id": "00000000-0000-0000-0000-000000000000"},
+        json={"needs_review": False},
+    )
+
+    assert response.status_code == 404
 
 
 def _seed_transactions(db_session: Session) -> tuple[Family, Account, Transaction, Merchant]:

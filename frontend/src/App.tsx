@@ -2,6 +2,7 @@ import {
   Activity,
   AlertCircle,
   CalendarDays,
+  CheckCircle,
   Filter,
   PiggyBank,
   RefreshCw,
@@ -175,6 +176,8 @@ const copy = {
     recentTransactions: "Последние операции",
     reviewOnly: "Только на проверку",
     reviewBadge: "на проверку",
+    markReviewed: "Готово",
+    updating: "Сохраняю...",
     reviewQueueEmpty: "Нет операций, которые требуют проверки",
     noCategory: "без категории",
     transactionDate: "Дата",
@@ -222,6 +225,8 @@ const copy = {
     recentTransactions: "Останні операції",
     reviewOnly: "Тільки на перевірку",
     reviewBadge: "на перевірку",
+    markReviewed: "Готово",
+    updating: "Зберігаю...",
     reviewQueueEmpty: "Немає операцій, які потребують перевірки",
     noCategory: "без категорії",
     transactionDate: "Дата",
@@ -251,6 +256,7 @@ export function App() {
     data: null,
     error: null,
   });
+  const [updatingTransactionId, setUpdatingTransactionId] = useState<string | null>(null);
   const hasAutoLoadedRef = useRef(false);
 
   const t = copy[locale];
@@ -364,6 +370,41 @@ export function App() {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void loadDashboard();
+  }
+
+  async function markTransactionReviewed(transactionId: string) {
+    const normalizedFamilyId = familyId.trim();
+    if (!UUID_PATTERN.test(normalizedFamilyId)) {
+      setTransactionsState((current) => ({
+        status: "error",
+        data: current.data,
+        error: t.invalidFamilyId,
+      }));
+      return;
+    }
+
+    setUpdatingTransactionId(transactionId);
+    try {
+      const url = new URL(`${API_BASE_URL}/transactions/${transactionId}`);
+      url.searchParams.set("family_id", normalizedFamilyId);
+      const response = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ needs_review: false }),
+      });
+      if (!response.ok) {
+        throw new Error(dashboardErrorMessage(response.status, t));
+      }
+      await loadDashboard();
+    } catch (error) {
+      setTransactionsState((current) => ({
+        status: "error",
+        data: current.data,
+        error: error instanceof TypeError ? t.networkError : errorMessage(error, t.unknownError),
+      }));
+    } finally {
+      setUpdatingTransactionId(null);
+    }
   }
 
   const dashboard = state.data;
@@ -583,9 +624,11 @@ export function App() {
               <TransactionsTable
                 emptyText={reviewOnly ? t.reviewQueueEmpty : t.noRows}
                 formatter={formatter}
+                onMarkReviewed={markTransactionReviewed}
                 rows={transactionsState.data?.rows ?? []}
                 t={t}
                 total={transactionsState.data?.total ?? 0}
+                updatingTransactionId={updatingTransactionId}
               />
             )}
           </section>
@@ -672,13 +715,17 @@ function TransactionsTable({
   total,
   formatter,
   emptyText,
+  onMarkReviewed,
   t,
+  updatingTransactionId,
 }: {
   rows: TransactionRow[];
   total: number;
   formatter: Intl.NumberFormat;
   emptyText: string;
+  onMarkReviewed: (transactionId: string) => void;
   t: Record<string, string>;
+  updatingTransactionId: string | null;
 }) {
   if (rows.length === 0) {
     return <EmptyRows text={emptyText} />;
@@ -695,6 +742,7 @@ function TransactionsTable({
           <span>{t.transactionDetails}</span>
           <span>{t.transactionScope}</span>
           <span>{t.transactionAmount}</span>
+          <span />
         </div>
         {rows.map((row) => (
           <article className={`transaction-row ${row.needs_review ? "transaction-review" : ""}`} key={row.id}>
@@ -710,6 +758,19 @@ function TransactionsTable({
             <b className={Number(row.amount) < 0 ? "amount-negative" : "amount-positive"}>
               {money(row.amount, formatter)}
             </b>
+            <div className="transaction-actions">
+              {row.needs_review && (
+                <button
+                  className="review-button"
+                  disabled={updatingTransactionId === row.id}
+                  onClick={() => onMarkReviewed(row.id)}
+                  type="button"
+                >
+                  {updatingTransactionId === row.id ? <RefreshCw className="spin" /> : <CheckCircle />}
+                  <span>{updatingTransactionId === row.id ? t.updating : t.markReviewed}</span>
+                </button>
+              )}
+            </div>
           </article>
         ))}
       </div>
