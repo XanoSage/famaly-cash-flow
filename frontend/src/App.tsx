@@ -127,6 +127,16 @@ type TransactionList = {
   rows: TransactionRow[];
 };
 
+type CategoryOption = {
+  id: string;
+  name: string;
+  is_system: boolean;
+};
+
+type CategoryList = {
+  rows: CategoryOption[];
+};
+
 type LoadState =
   | { status: "idle"; data: null; error: null }
   | { status: "loading"; data: Dashboard | null; error: null }
@@ -177,6 +187,8 @@ const copy = {
     reviewOnly: "Только на проверку",
     reviewBadge: "на проверку",
     markReviewed: "Готово",
+    chooseCategory: "Выбрать категорию",
+    categoryLoadError: "Не удалось загрузить категории.",
     updating: "Сохраняю...",
     reviewQueueEmpty: "Нет операций, которые требуют проверки",
     noCategory: "без категории",
@@ -226,6 +238,8 @@ const copy = {
     reviewOnly: "Тільки на перевірку",
     reviewBadge: "на перевірку",
     markReviewed: "Готово",
+    chooseCategory: "Вибрати категорію",
+    categoryLoadError: "Не вдалося завантажити категорії.",
     updating: "Зберігаю...",
     reviewQueueEmpty: "Немає операцій, які потребують перевірки",
     noCategory: "без категорії",
@@ -256,6 +270,8 @@ export function App() {
     data: null,
     error: null,
   });
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [updatingTransactionId, setUpdatingTransactionId] = useState<string | null>(null);
   const hasAutoLoadedRef = useRef(false);
 
@@ -297,6 +313,8 @@ export function App() {
     if (!normalizedFamilyId) {
       setState({ status: "idle", data: null, error: null });
       setTransactionsState({ status: "idle", data: null, error: null });
+      setCategories([]);
+      setCategoriesError(null);
       return;
     }
     if (!UUID_PATTERN.test(normalizedFamilyId)) {
@@ -315,6 +333,7 @@ export function App() {
 
     setState((current) => ({ status: "loading", data: current.data, error: null }));
     setTransactionsState((current) => ({ status: "loading", data: current.data, error: null }));
+    await loadCategories(normalizedFamilyId);
     try {
       const url = buildFilteredUrl(`${API_BASE_URL}/analytics/dashboard`, normalizedFamilyId, {
         occurredFrom,
@@ -337,6 +356,23 @@ export function App() {
     }
 
     await loadTransactions(normalizedFamilyId, reviewOnly);
+  }
+
+  async function loadCategories(normalizedFamilyId: string) {
+    setCategoriesError(null);
+    try {
+      const url = new URL(`${API_BASE_URL}/categories`);
+      url.searchParams.set("family_id", normalizedFamilyId);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(dashboardErrorMessage(response.status, t));
+      }
+      const data = (await response.json()) as CategoryList;
+      setCategories(data.rows);
+    } catch (error) {
+      setCategories([]);
+      setCategoriesError(error instanceof TypeError ? t.networkError : errorMessage(error, t.categoryLoadError));
+    }
   }
 
   async function loadTransactions(normalizedFamilyId: string, onlyReview: boolean) {
@@ -373,6 +409,20 @@ export function App() {
   }
 
   async function markTransactionReviewed(transactionId: string) {
+    await patchTransaction(transactionId, { needs_review: false });
+  }
+
+  async function assignTransactionCategory(transactionId: string, categoryId: string) {
+    if (!categoryId) {
+      return;
+    }
+    await patchTransaction(transactionId, { category_id: categoryId, needs_review: false });
+  }
+
+  async function patchTransaction(
+    transactionId: string,
+    payload: { category_id?: string; needs_review?: boolean },
+  ) {
     const normalizedFamilyId = familyId.trim();
     if (!UUID_PATTERN.test(normalizedFamilyId)) {
       setTransactionsState((current) => ({
@@ -390,7 +440,7 @@ export function App() {
       const response = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ needs_review: false }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error(dashboardErrorMessage(response.status, t));
@@ -618,12 +668,15 @@ export function App() {
             {transactionsState.status === "error" && (
               <p className="table-error">{transactionsState.error}</p>
             )}
+            {categoriesError && <p className="table-error">{categoriesError}</p>}
             {transactionsState.status === "loading" && !transactionsState.data ? (
               <EmptyRows text={t.loading} />
             ) : (
               <TransactionsTable
+                categories={categories}
                 emptyText={reviewOnly ? t.reviewQueueEmpty : t.noRows}
                 formatter={formatter}
+                onAssignCategory={assignTransactionCategory}
                 onMarkReviewed={markTransactionReviewed}
                 rows={transactionsState.data?.rows ?? []}
                 t={t}
@@ -711,18 +764,22 @@ function EmptyRows({ text }: { text: string }) {
 }
 
 function TransactionsTable({
+  categories,
   rows,
   total,
   formatter,
   emptyText,
+  onAssignCategory,
   onMarkReviewed,
   t,
   updatingTransactionId,
 }: {
+  categories: CategoryOption[];
   rows: TransactionRow[];
   total: number;
   formatter: Intl.NumberFormat;
   emptyText: string;
+  onAssignCategory: (transactionId: string, categoryId: string) => void;
   onMarkReviewed: (transactionId: string) => void;
   t: Record<string, string>;
   updatingTransactionId: string | null;
@@ -760,15 +817,30 @@ function TransactionsTable({
             </b>
             <div className="transaction-actions">
               {row.needs_review && (
-                <button
-                  className="review-button"
-                  disabled={updatingTransactionId === row.id}
-                  onClick={() => onMarkReviewed(row.id)}
-                  type="button"
-                >
-                  {updatingTransactionId === row.id ? <RefreshCw className="spin" /> : <CheckCircle />}
-                  <span>{updatingTransactionId === row.id ? t.updating : t.markReviewed}</span>
-                </button>
+                <>
+                  <select
+                    className="category-select"
+                    disabled={updatingTransactionId === row.id || categories.length === 0}
+                    onChange={(event) => onAssignCategory(row.id, event.target.value)}
+                    value={row.category_id ?? ""}
+                  >
+                    <option value="">{t.chooseCategory}</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="review-button"
+                    disabled={updatingTransactionId === row.id}
+                    onClick={() => onMarkReviewed(row.id)}
+                    type="button"
+                  >
+                    {updatingTransactionId === row.id ? <RefreshCw className="spin" /> : <CheckCircle />}
+                    <span>{updatingTransactionId === row.id ? t.updating : t.markReviewed}</span>
+                  </button>
+                </>
               )}
             </div>
           </article>

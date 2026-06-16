@@ -423,7 +423,7 @@ svg {
 .transaction-row {
   display: grid;
   gap: 12px;
-  grid-template-columns: 110px minmax(0, 1fr) 92px 140px 130px;
+  grid-template-columns: 110px minmax(0, 1fr) 92px 140px minmax(260px, auto);
 }
 
 .transactions-head {
@@ -505,7 +505,13 @@ svg {
 
 .transaction-actions {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
+}
+
+.category-select {
+  min-height: 34px;
+  min-width: 150px;
 }
 
 .review-button {
@@ -600,6 +606,12 @@ svg {
   }
 
   .transaction-actions {
+    align-items: flex-start;
+    flex-direction: column;
     justify-content: flex-start;
+  }
+
+  .category-select {
+    width: 100%;
   }
 }
