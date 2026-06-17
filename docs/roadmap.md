@@ -62,7 +62,12 @@
 
 ## Later
 
-- Telegram bot.
+- Telegram bot:
+  - webhook skeleton;
+  - summary and review commands;
+  - review queue inline actions;
+  - manual transaction draft from chat text;
+  - rich summaries and Mini App later.
 - Лимиты и бюджеты.
 - Сравнение периодов.
 - Аномалии.

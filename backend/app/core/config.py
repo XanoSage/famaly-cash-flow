@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-local-env"
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 30
+    telegram_bot_token: str | None = None
+    telegram_webhook_secret_token: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
