@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.telegram_bot.dispatcher import dispatch_update
 
 router = APIRouter(prefix="/telegram")
 
@@ -23,6 +24,6 @@ def telegram_webhook(
         if x_telegram_bot_api_secret_token != settings.telegram_webhook_secret_token:
             raise HTTPException(status_code=401, detail="Invalid Telegram webhook secret")
 
-    # Handler dispatch will be added in small slices: /start, /summary, /review, and inline actions.
-    _ = update
+    # Outgoing Telegram API calls will be added after command handlers are covered by tests.
+    dispatch_update(update)
     return TelegramWebhookResponse(ok=True)
