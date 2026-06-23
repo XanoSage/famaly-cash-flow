@@ -65,3 +65,4 @@ Do not depend on the newest Telegram SDK features until the Python library suppo
 - Webhook skeleton: `POST /api/v1/telegram/webhook`.
 - Optional Telegram webhook secret verification.
 - Pure dispatcher for `/start` command, covered by tests.
+- Outgoing Telegram `sendMessage` client for dispatcher replies.
