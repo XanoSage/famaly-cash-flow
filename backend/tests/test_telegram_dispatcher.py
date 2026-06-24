@@ -1,4 +1,4 @@
-from app.telegram_bot.dispatcher import START_TEXT, dispatch_update
+from app.telegram_bot.dispatcher import START_TEXT, BotReply, dispatch_update
 
 
 def test_dispatch_update_returns_start_reply() -> None:
@@ -31,6 +31,24 @@ def test_dispatch_update_supports_bot_mention_command() -> None:
     )
 
     assert len(replies) == 1
+
+
+def test_dispatch_update_returns_summary_reply() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/summary",
+            },
+        },
+        summary_text_provider=lambda: "Summary text",
+    )
+
+    assert replies == [BotReply(chat_id=42, text="Summary text")]
+    assert replies[0].chat_id == 42
+    assert replies[0].text == "Summary text"
 
 
 def test_dispatch_update_ignores_unknown_or_incomplete_updates() -> None:
