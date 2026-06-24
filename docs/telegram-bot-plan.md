@@ -60,9 +60,15 @@ Good first workflows:
 Start with webhook infrastructure and tests, then build bot behavior in small slices.
 Do not depend on the newest Telegram SDK features until the Python library support is stable.
 
+## Local Setup Notes
+
+- Set `TELEGRAM_DEFAULT_FAMILY_ID` in backend `.env` to the demo seed family id before testing `/summary`.
+- This is a temporary MVP shortcut until Telegram users are linked to Family Cash Flow users/families in the database.
+
 ## Implemented
 
 - Webhook skeleton: `POST /api/v1/telegram/webhook`.
 - Optional Telegram webhook secret verification.
 - Pure dispatcher for `/start` command, covered by tests.
 - Outgoing Telegram `sendMessage` client for dispatcher replies.
+- `/summary` command backed by `AnalyticsSummaryService` and `TELEGRAM_DEFAULT_FAMILY_ID`.

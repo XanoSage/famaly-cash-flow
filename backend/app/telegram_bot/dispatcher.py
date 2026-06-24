@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -17,7 +18,11 @@ class BotReply:
     text: str
 
 
-def dispatch_update(update: Mapping[str, Any]) -> list[BotReply]:
+def dispatch_update(
+    update: Mapping[str, Any],
+    *,
+    summary_text_provider: Callable[[], str] | None = None,
+) -> list[BotReply]:
     message = update.get("message")
     if not isinstance(message, Mapping):
         return []
@@ -31,8 +36,11 @@ def dispatch_update(update: Mapping[str, Any]) -> list[BotReply]:
     if not isinstance(chat_id, int) or not isinstance(text, str):
         return []
 
-    if _command_name(text) == "start":
+    command_name = _command_name(text)
+    if command_name == "start":
         return [BotReply(chat_id=chat_id, text=START_TEXT)]
+    if command_name == "summary" and summary_text_provider is not None:
+        return [BotReply(chat_id=chat_id, text=summary_text_provider())]
 
     return []
 
