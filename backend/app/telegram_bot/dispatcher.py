@@ -22,6 +22,7 @@ def dispatch_update(
     update: Mapping[str, Any],
     *,
     summary_text_provider: Callable[[], str] | None = None,
+    review_text_provider: Callable[[], str] | None = None,
 ) -> list[BotReply]:
     message = update.get("message")
     if not isinstance(message, Mapping):
@@ -41,6 +42,8 @@ def dispatch_update(
         return [BotReply(chat_id=chat_id, text=START_TEXT)]
     if command_name == "summary" and summary_text_provider is not None:
         return [BotReply(chat_id=chat_id, text=summary_text_provider())]
+    if command_name == "review" and review_text_provider is not None:
+        return [BotReply(chat_id=chat_id, text=review_text_provider())]
 
     return []
 

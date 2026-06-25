@@ -115,3 +115,40 @@ def test_telegram_webhook_sends_summary_reply(monkeypatch) -> None:
     assert sent["bot_token"] == "token-123"
     assert sent["family_id_value"] == "family-123"
     assert sent["replies"] == [BotReply(chat_id=42, text="Summary text")]
+
+
+def test_telegram_webhook_sends_review_reply(monkeypatch) -> None:
+    reset_telegram_settings(monkeypatch)
+    sent = {}
+
+    def fake_build_review_text(db, family_id_value: str | None) -> str:
+        sent["family_id_value"] = family_id_value
+        return "Review text"
+
+    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
+        sent["bot_token"] = bot_token
+        sent["replies"] = replies
+        return len(replies)
+
+    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
+    monkeypatch.setattr(telegram, "build_review_text", fake_build_review_text)
+    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/telegram/webhook",
+        json={
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/review",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert sent["bot_token"] == "token-123"
+    assert sent["family_id_value"] == "family-123"
+    assert sent["replies"] == [BotReply(chat_id=42, text="Review text")]

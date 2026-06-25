@@ -72,3 +72,4 @@ Do not depend on the newest Telegram SDK features until the Python library suppo
 - Pure dispatcher for `/start` command, covered by tests.
 - Outgoing Telegram `sendMessage` client for dispatcher replies.
 - `/summary` command backed by `AnalyticsSummaryService` and `TELEGRAM_DEFAULT_FAMILY_ID`.
+- `/review` command lists latest `needs_review=true` transactions for `TELEGRAM_DEFAULT_FAMILY_ID`.
