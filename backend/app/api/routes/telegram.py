@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.telegram_bot.client import TelegramApiError, send_bot_replies
 from app.telegram_bot.dispatcher import dispatch_update
+from app.telegram_bot.review import build_review_text
 from app.telegram_bot.summary import build_summary_text
 
 router = APIRouter(prefix="/telegram")
@@ -32,6 +33,10 @@ def telegram_webhook(
     replies = dispatch_update(
         update,
         summary_text_provider=lambda: build_summary_text(
+            db,
+            settings.telegram_default_family_id,
+        ),
+        review_text_provider=lambda: build_review_text(
             db,
             settings.telegram_default_family_id,
         ),

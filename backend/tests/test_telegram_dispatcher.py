@@ -51,6 +51,22 @@ def test_dispatch_update_returns_summary_reply() -> None:
     assert replies[0].text == "Summary text"
 
 
+def test_dispatch_update_returns_review_reply() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/review",
+            },
+        },
+        review_text_provider=lambda: "Review text",
+    )
+
+    assert replies == [BotReply(chat_id=42, text="Review text")]
+
+
 def test_dispatch_update_ignores_unknown_or_incomplete_updates() -> None:
     assert dispatch_update({"update_id": 1}) == []
     assert dispatch_update({"message": {"chat": {"id": 42}, "text": "/unknown"}}) == []
