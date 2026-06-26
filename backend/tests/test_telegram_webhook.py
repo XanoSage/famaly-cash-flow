@@ -152,3 +152,42 @@ def test_telegram_webhook_sends_review_reply(monkeypatch) -> None:
     assert sent["bot_token"] == "token-123"
     assert sent["family_id_value"] == "family-123"
     assert sent["replies"] == [BotReply(chat_id=42, text="Review text")]
+
+
+def test_telegram_webhook_sends_review_done_reply(monkeypatch) -> None:
+    reset_telegram_settings(monkeypatch)
+    sent = {}
+
+    def fake_mark_reviewed_text(db, family_id_value: str | None, transaction_id_value: str | None) -> str:
+        sent["family_id_value"] = family_id_value
+        sent["transaction_id_value"] = transaction_id_value
+        return "Done text"
+
+    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
+        sent["bot_token"] = bot_token
+        sent["replies"] = replies
+        return len(replies)
+
+    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
+    monkeypatch.setattr(telegram, "mark_reviewed_text", fake_mark_reviewed_text)
+    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/telegram/webhook",
+        json={
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/done transaction-123",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert sent["bot_token"] == "token-123"
+    assert sent["family_id_value"] == "family-123"
+    assert sent["transaction_id_value"] == "transaction-123"
+    assert sent["replies"] == [BotReply(chat_id=42, text="Done text")]

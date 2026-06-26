@@ -23,6 +23,7 @@ def dispatch_update(
     *,
     summary_text_provider: Callable[[], str] | None = None,
     review_text_provider: Callable[[], str] | None = None,
+    review_done_text_provider: Callable[[str | None], str] | None = None,
 ) -> list[BotReply]:
     message = update.get("message")
     if not isinstance(message, Mapping):
@@ -44,6 +45,8 @@ def dispatch_update(
         return [BotReply(chat_id=chat_id, text=summary_text_provider())]
     if command_name == "review" and review_text_provider is not None:
         return [BotReply(chat_id=chat_id, text=review_text_provider())]
+    if command_name == "done" and review_done_text_provider is not None:
+        return [BotReply(chat_id=chat_id, text=review_done_text_provider(_command_argument(text)))]
 
     return []
 
@@ -53,3 +56,10 @@ def _command_name(text: str) -> str | None:
     if not first_token.startswith("/"):
         return None
     return first_token[1:].split("@", maxsplit=1)[0].lower()
+
+
+def _command_argument(text: str) -> str | None:
+    parts = text.strip().split(maxsplit=1)
+    if len(parts) < 2:
+        return None
+    return parts[1].strip() or None
