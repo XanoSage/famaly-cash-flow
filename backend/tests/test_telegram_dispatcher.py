@@ -67,6 +67,38 @@ def test_dispatch_update_returns_review_reply() -> None:
     assert replies == [BotReply(chat_id=42, text="Review text")]
 
 
+def test_dispatch_update_returns_review_done_reply() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/done transaction-123",
+            },
+        },
+        review_done_text_provider=lambda transaction_id: f"Done {transaction_id}",
+    )
+
+    assert replies == [BotReply(chat_id=42, text="Done transaction-123")]
+
+
+def test_dispatch_update_returns_review_done_usage_without_argument() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/done",
+            },
+        },
+        review_done_text_provider=lambda transaction_id: f"Done {transaction_id}",
+    )
+
+    assert replies == [BotReply(chat_id=42, text="Done None")]
+
+
 def test_dispatch_update_ignores_unknown_or_incomplete_updates() -> None:
     assert dispatch_update({"update_id": 1}) == []
     assert dispatch_update({"message": {"chat": {"id": 42}, "text": "/unknown"}}) == []

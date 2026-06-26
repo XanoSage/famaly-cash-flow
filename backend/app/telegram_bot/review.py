@@ -19,6 +19,10 @@ REVIEW_INVALID_FAMILY_ID_TEXT = (
     "Укажи UUID семьи из demo seed или из базы."
 )
 REVIEW_EMPTY_TEXT = "Операций на проверку нет."
+REVIEW_DONE_USAGE_TEXT = "Используй команду /done <transaction_id> из списка /review."
+REVIEW_TRANSACTION_NOT_FOUND_TEXT = "Операция не найдена в текущей семье."
+REVIEW_ALREADY_DONE_TEXT = "Эта операция уже отмечена как проверенная."
+REVIEW_MARKED_DONE_TEXT = "Операция отмечена как проверенная."
 
 
 def build_review_text(db: Session, family_id_value: str | None, *, limit: int = 5) -> str:
@@ -33,6 +37,35 @@ def build_review_text(db: Session, family_id_value: str | None, *, limit: int = 
     return format_review_text(transactions)
 
 
+def mark_reviewed_text(db: Session, family_id_value: str | None, transaction_id_value: str | None) -> str:
+    if family_id_value is None or not family_id_value.strip():
+        return REVIEW_NOT_CONFIGURED_TEXT
+
+    family_id = _parse_family_id(family_id_value)
+    if family_id is None:
+        return REVIEW_INVALID_FAMILY_ID_TEXT
+
+    transaction_id = _parse_family_id(transaction_id_value)
+    if transaction_id is None:
+        return REVIEW_DONE_USAGE_TEXT
+
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.family_id == family_id,
+            Transaction.deleted_at.is_(None),
+        )
+    )
+    if transaction is None:
+        return REVIEW_TRANSACTION_NOT_FOUND_TEXT
+    if not transaction.needs_review:
+        return REVIEW_ALREADY_DONE_TEXT
+
+    transaction.needs_review = False
+    db.commit()
+    return REVIEW_MARKED_DONE_TEXT
+
+
 def format_review_text(transactions: list[Transaction]) -> str:
     if not transactions:
         return REVIEW_EMPTY_TEXT
@@ -42,7 +75,7 @@ def format_review_text(transactions: list[Transaction]) -> str:
         title = _transaction_title(transaction)
         category_name = transaction.category.name if transaction.category else "без категории"
         lines.append(
-            f"{index}. {transaction.occurred_at:%d.%m.%Y} | "
+            f"{index}. {transaction.occurred_at:%d.%m.%Y} | id: {transaction.id} | "
             f"{_format_money(transaction.amount)} {transaction.currency} | "
             f"{title} | {category_name}"
         )
