@@ -74,3 +74,4 @@ Do not depend on the newest Telegram SDK features until the Python library suppo
 - `/summary` command backed by `AnalyticsSummaryService` and `TELEGRAM_DEFAULT_FAMILY_ID`.
 - `/review` command lists latest `needs_review=true` transactions for `TELEGRAM_DEFAULT_FAMILY_ID`.
 - `/done <transaction_id>` command clears `needs_review` for one transaction in `TELEGRAM_DEFAULT_FAMILY_ID`.
+- `/review` inline buttons call `review_done:<transaction_id>` callbacks and reuse the same review-done service.

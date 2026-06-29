@@ -24,6 +24,7 @@ from app.telegram_bot.review import (
     REVIEW_NOT_CONFIGURED_TEXT,
     REVIEW_TRANSACTION_NOT_FOUND_TEXT,
     build_review_text,
+    build_review_reply_content,
     mark_reviewed_text,
 )
 
@@ -71,6 +72,32 @@ def test_build_review_text_formats_review_transactions(db_session: Session) -> N
     assert "2. 02.05.2026 | id: " in text
     assert "| -100.00 UAH | Need category | без категории" in text
     assert "Reviewed already" not in text
+
+
+def test_build_review_reply_content_adds_inline_buttons(db_session: Session) -> None:
+    family = _seed_review_transactions(db_session)
+
+    reply = build_review_reply_content(db_session, str(family.id))
+
+    assert "Операции на проверку" in reply.text
+    assert reply.reply_markup is not None
+    keyboard = reply.reply_markup["inline_keyboard"]
+    assert keyboard[0][0]["text"] == "Готово 1"
+    assert keyboard[0][0]["callback_data"].startswith("review_done:")
+    assert keyboard[1][0]["text"] == "Готово 2"
+
+
+def test_build_review_reply_content_skips_inline_buttons_for_empty_queue(
+    db_session: Session,
+) -> None:
+    family = Family(name="Empty Review Family")
+    db_session.add(family)
+    db_session.commit()
+
+    reply = build_review_reply_content(db_session, str(family.id))
+
+    assert reply.text == REVIEW_EMPTY_TEXT
+    assert reply.reply_markup is None
 
 
 def test_build_review_text_applies_limit(db_session: Session) -> None:
