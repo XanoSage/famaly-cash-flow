@@ -1,4 +1,4 @@
-from app.telegram_bot.dispatcher import START_TEXT, BotReply, dispatch_update
+from app.telegram_bot.dispatcher import START_TEXT, BotCallbackAnswer, BotReply, BotReplyContent, dispatch_update
 
 
 def test_dispatch_update_returns_start_reply() -> None:
@@ -67,6 +67,24 @@ def test_dispatch_update_returns_review_reply() -> None:
     assert replies == [BotReply(chat_id=42, text="Review text")]
 
 
+def test_dispatch_update_returns_review_reply_with_markup() -> None:
+    reply_markup = {"inline_keyboard": [[{"text": "Done", "callback_data": "review_done:1"}]]}
+
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "/review",
+            },
+        },
+        review_text_provider=lambda: BotReplyContent(text="Review text", reply_markup=reply_markup),
+    )
+
+    assert replies == [BotReply(chat_id=42, text="Review text", reply_markup=reply_markup)]
+
+
 def test_dispatch_update_returns_review_done_reply() -> None:
     replies = dispatch_update(
         {
@@ -97,6 +115,25 @@ def test_dispatch_update_returns_review_done_usage_without_argument() -> None:
     )
 
     assert replies == [BotReply(chat_id=42, text="Done None")]
+
+
+def test_dispatch_update_handles_review_done_callback() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "callback_query": {
+                "id": "callback-1",
+                "data": "review_done:transaction-123",
+                "message": {"chat": {"id": 42, "type": "private"}},
+            },
+        },
+        review_done_text_provider=lambda transaction_id: f"Done {transaction_id}",
+    )
+
+    assert replies == [
+        BotCallbackAnswer(callback_query_id="callback-1", text="Done transaction-123"),
+        BotReply(chat_id=42, text="Done transaction-123"),
+    ]
 
 
 def test_dispatch_update_ignores_unknown_or_incomplete_updates() -> None:

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.transaction import Transaction
+from app.telegram_bot.dispatcher import BotReplyContent
 
 
 REVIEW_NOT_CONFIGURED_TEXT = (
@@ -35,6 +36,26 @@ def build_review_text(db: Session, family_id_value: str | None, *, limit: int = 
 
     transactions = _load_review_transactions(db, family_id=family_id, limit=limit)
     return format_review_text(transactions)
+
+
+def build_review_reply_content(
+    db: Session,
+    family_id_value: str | None,
+    *,
+    limit: int = 5,
+) -> BotReplyContent:
+    if family_id_value is None or not family_id_value.strip():
+        return BotReplyContent(text=REVIEW_NOT_CONFIGURED_TEXT)
+
+    family_id = _parse_family_id(family_id_value)
+    if family_id is None:
+        return BotReplyContent(text=REVIEW_INVALID_FAMILY_ID_TEXT)
+
+    transactions = _load_review_transactions(db, family_id=family_id, limit=limit)
+    return BotReplyContent(
+        text=format_review_text(transactions),
+        reply_markup=_review_reply_markup(transactions),
+    )
 
 
 def mark_reviewed_text(db: Session, family_id_value: str | None, transaction_id_value: str | None) -> str:
@@ -119,3 +140,20 @@ def _parse_family_id(value: str | None) -> UUID | None:
 
 def _format_money(value: Decimal) -> str:
     return f"{value:,.2f}".replace(",", " ")
+
+
+def _review_reply_markup(transactions: list[Transaction]) -> dict[str, list[list[dict[str, str]]]] | None:
+    if not transactions:
+        return None
+
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": f"Готово {index}",
+                    "callback_data": f"review_done:{transaction.id}",
+                }
+            ]
+            for index, transaction in enumerate(transactions, start=1)
+        ]
+    }
