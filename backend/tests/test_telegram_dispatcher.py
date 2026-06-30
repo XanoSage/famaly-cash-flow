@@ -136,6 +136,54 @@ def test_dispatch_update_handles_review_done_callback() -> None:
     ]
 
 
+def test_dispatch_update_handles_review_categories_callback() -> None:
+    reply_markup = {"inline_keyboard": [[{"text": "Food", "callback_data": "review_category:t:c"}]]}
+
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "callback_query": {
+                "id": "callback-1",
+                "data": "review_categories:transaction-token",
+                "message": {"chat": {"id": 42, "type": "private"}},
+            },
+        },
+        review_categories_text_provider=lambda transaction_id: BotReplyContent(
+            text=f"Categories {transaction_id}",
+            reply_markup=reply_markup,
+        ),
+    )
+
+    assert replies == [
+        BotCallbackAnswer(callback_query_id="callback-1", text="Categories transaction-token"),
+        BotReply(chat_id=42, text="Categories transaction-token", reply_markup=reply_markup),
+    ]
+
+
+def test_dispatch_update_handles_review_category_callback() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "callback_query": {
+                "id": "callback-1",
+                "data": "review_category:transaction-token:category-token",
+                "message": {"chat": {"id": 42, "type": "private"}},
+            },
+        },
+        review_category_text_provider=lambda transaction_id, category_id: (
+            f"Category {transaction_id} {category_id}"
+        ),
+    )
+
+    assert replies == [
+        BotCallbackAnswer(
+            callback_query_id="callback-1",
+            text="Category transaction-token category-token",
+        ),
+        BotReply(chat_id=42, text="Category transaction-token category-token"),
+    ]
+
+
 def test_dispatch_update_ignores_unknown_or_incomplete_updates() -> None:
     assert dispatch_update({"update_id": 1}) == []
     assert dispatch_update({"message": {"chat": {"id": 42}, "text": "/unknown"}}) == []

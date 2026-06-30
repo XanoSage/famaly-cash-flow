@@ -10,7 +10,12 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.telegram_bot.client import TelegramApiError, send_bot_replies
 from app.telegram_bot.dispatcher import dispatch_update
-from app.telegram_bot.review import build_review_reply_content, mark_reviewed_text
+from app.telegram_bot.review import (
+    assign_category_text,
+    build_category_menu_content,
+    build_review_reply_content,
+    mark_reviewed_text,
+)
 from app.telegram_bot.summary import build_summary_text
 
 router = APIRouter(prefix="/telegram")
@@ -44,6 +49,17 @@ def telegram_webhook(
             db,
             settings.telegram_default_family_id,
             transaction_id,
+        ),
+        review_categories_text_provider=lambda transaction_id: build_category_menu_content(
+            db,
+            settings.telegram_default_family_id,
+            transaction_id,
+        ),
+        review_category_text_provider=lambda transaction_id, category_id: assign_category_text(
+            db,
+            settings.telegram_default_family_id,
+            transaction_id,
+            category_id,
         ),
     )
     try:
