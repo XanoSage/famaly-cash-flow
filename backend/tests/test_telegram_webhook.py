@@ -242,3 +242,95 @@ def test_telegram_webhook_sends_review_done_callback_answer(monkeypatch) -> None
         BotCallbackAnswer(callback_query_id="callback-1", text="Done text"),
         BotReply(chat_id=42, text="Done text"),
     ]
+
+
+def test_telegram_webhook_sends_review_categories_callback(monkeypatch) -> None:
+    reset_telegram_settings(monkeypatch)
+    sent = {}
+    reply_markup = {"inline_keyboard": [[{"text": "Food", "callback_data": "review_category:t:c"}]]}
+
+    def fake_build_category_menu_content(db, family_id_value: str | None, transaction_id_value: str | None):
+        sent["family_id_value"] = family_id_value
+        sent["transaction_id_value"] = transaction_id_value
+        return BotReplyContent(text="Choose category", reply_markup=reply_markup)
+
+    def fake_send_bot_replies(bot_token: str | None, replies):
+        sent["bot_token"] = bot_token
+        sent["replies"] = replies
+        return len(replies)
+
+    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
+    monkeypatch.setattr(telegram, "build_category_menu_content", fake_build_category_menu_content)
+    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/telegram/webhook",
+        json={
+            "update_id": 1,
+            "callback_query": {
+                "id": "callback-1",
+                "data": "review_categories:transaction-token",
+                "message": {"chat": {"id": 42, "type": "private"}},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert sent["bot_token"] == "token-123"
+    assert sent["family_id_value"] == "family-123"
+    assert sent["transaction_id_value"] == "transaction-token"
+    assert sent["replies"] == [
+        BotCallbackAnswer(callback_query_id="callback-1", text="Choose category"),
+        BotReply(chat_id=42, text="Choose category", reply_markup=reply_markup),
+    ]
+
+
+def test_telegram_webhook_sends_review_category_callback(monkeypatch) -> None:
+    reset_telegram_settings(monkeypatch)
+    sent = {}
+
+    def fake_assign_category_text(
+        db,
+        family_id_value: str | None,
+        transaction_id_value: str | None,
+        category_id_value: str | None,
+    ) -> str:
+        sent["family_id_value"] = family_id_value
+        sent["transaction_id_value"] = transaction_id_value
+        sent["category_id_value"] = category_id_value
+        return "Category assigned"
+
+    def fake_send_bot_replies(bot_token: str | None, replies):
+        sent["bot_token"] = bot_token
+        sent["replies"] = replies
+        return len(replies)
+
+    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
+    monkeypatch.setattr(telegram, "assign_category_text", fake_assign_category_text)
+    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/telegram/webhook",
+        json={
+            "update_id": 1,
+            "callback_query": {
+                "id": "callback-1",
+                "data": "review_category:transaction-token:category-token",
+                "message": {"chat": {"id": 42, "type": "private"}},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert sent["bot_token"] == "token-123"
+    assert sent["family_id_value"] == "family-123"
+    assert sent["transaction_id_value"] == "transaction-token"
+    assert sent["category_id_value"] == "category-token"
+    assert sent["replies"] == [
+        BotCallbackAnswer(callback_query_id="callback-1", text="Category assigned"),
+        BotReply(chat_id=42, text="Category assigned"),
+    ]

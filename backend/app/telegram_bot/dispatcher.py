@@ -40,10 +40,14 @@ def dispatch_update(
     summary_text_provider: Callable[[], str] | None = None,
     review_text_provider: Callable[[], str | BotReplyContent] | None = None,
     review_done_text_provider: Callable[[str | None], str] | None = None,
+    review_categories_text_provider: Callable[[str | None], str | BotReplyContent] | None = None,
+    review_category_text_provider: Callable[[str | None, str | None], str] | None = None,
 ) -> list[BotAction]:
     callback_replies = _dispatch_callback_query(
         update,
         review_done_text_provider=review_done_text_provider,
+        review_categories_text_provider=review_categories_text_provider,
+        review_category_text_provider=review_category_text_provider,
     )
     if callback_replies:
         return callback_replies
@@ -78,10 +82,9 @@ def _dispatch_callback_query(
     update: Mapping[str, Any],
     *,
     review_done_text_provider: Callable[[str | None], str] | None,
+    review_categories_text_provider: Callable[[str | None], str | BotReplyContent] | None,
+    review_category_text_provider: Callable[[str | None, str | None], str] | None,
 ) -> list[BotAction]:
-    if review_done_text_provider is None:
-        return []
-
     callback_query = update.get("callback_query")
     if not isinstance(callback_query, Mapping):
         return []
@@ -90,16 +93,22 @@ def _dispatch_callback_query(
     data = callback_query.get("data")
     if not isinstance(callback_query_id, str) or not isinstance(data, str):
         return []
-    if not data.startswith("review_done:"):
-        return []
-
-    text = review_done_text_provider(data.removeprefix("review_done:"))
-    actions: list[BotAction] = [BotCallbackAnswer(callback_query_id=callback_query_id, text=text)]
 
     chat_id = _callback_chat_id(callback_query)
-    if chat_id is not None:
-        actions.append(BotReply(chat_id=chat_id, text=text))
-    return actions
+    if data.startswith("review_done:") and review_done_text_provider is not None:
+        text = review_done_text_provider(data.removeprefix("review_done:"))
+        return _callback_actions(callback_query_id, chat_id, text)
+
+    if data.startswith("review_categories:") and review_categories_text_provider is not None:
+        content = review_categories_text_provider(data.removeprefix("review_categories:"))
+        return _callback_actions(callback_query_id, chat_id, content)
+
+    if data.startswith("review_category:") and review_category_text_provider is not None:
+        transaction_id, category_id = _split_callback_payload(data.removeprefix("review_category:"))
+        text = review_category_text_provider(transaction_id, category_id)
+        return _callback_actions(callback_query_id, chat_id, text)
+
+    return []
 
 
 def _callback_chat_id(callback_query: Mapping[str, Any]) -> int | None:
@@ -117,6 +126,25 @@ def _to_bot_reply(chat_id: int, value: str | BotReplyContent) -> BotReply:
     if isinstance(value, BotReplyContent):
         return BotReply(chat_id=chat_id, text=value.text, reply_markup=value.reply_markup)
     return BotReply(chat_id=chat_id, text=value)
+
+
+def _callback_actions(
+    callback_query_id: str,
+    chat_id: int | None,
+    value: str | BotReplyContent,
+) -> list[BotAction]:
+    text = value.text if isinstance(value, BotReplyContent) else value
+    actions: list[BotAction] = [BotCallbackAnswer(callback_query_id=callback_query_id, text=text)]
+    if chat_id is not None:
+        actions.append(_to_bot_reply(chat_id, value))
+    return actions
+
+
+def _split_callback_payload(value: str) -> tuple[str | None, str | None]:
+    parts = value.split(":", maxsplit=1)
+    if len(parts) != 2:
+        return None, None
+    return parts[0], parts[1]
 
 
 def _command_name(text: str) -> str | None:
