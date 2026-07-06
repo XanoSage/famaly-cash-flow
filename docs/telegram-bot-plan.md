@@ -62,6 +62,7 @@ Do not depend on the newest Telegram SDK features until the Python library suppo
 
 ## Local Setup Notes
 
+- Detailed local smoke-test steps live in [Telegram Local Checklist](telegram-local-checklist.md).
 - Set `TELEGRAM_DEFAULT_FAMILY_ID` in backend `.env` to the demo seed family id before testing `/summary`.
 - Set `TELEGRAM_DEFAULT_ACCOUNT_ID` to the demo seed account id before testing manual text input.
 - This is a temporary MVP shortcut until Telegram users are linked to Family Cash Flow users/families in the database.
