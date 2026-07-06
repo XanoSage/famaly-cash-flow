@@ -117,6 +117,38 @@ def test_dispatch_update_returns_review_done_usage_without_argument() -> None:
     assert replies == [BotReply(chat_id=42, text="Done None")]
 
 
+def test_dispatch_update_returns_plain_text_reply() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "АТБ 450 еда",
+            },
+        },
+        text_message_provider=lambda text: f"Manual {text}",
+    )
+
+    assert replies == [BotReply(chat_id=42, text="Manual АТБ 450 еда")]
+
+
+def test_dispatch_update_ignores_plain_text_without_provider_reply() -> None:
+    replies = dispatch_update(
+        {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "АТБ 450 еда",
+            },
+        },
+        text_message_provider=lambda text: None,
+    )
+
+    assert replies == []
+
+
 def test_dispatch_update_handles_review_done_callback() -> None:
     replies = dispatch_update(
         {

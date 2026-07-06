@@ -9,6 +9,7 @@ def reset_telegram_settings(monkeypatch) -> None:
     monkeypatch.setattr(telegram.settings, "telegram_bot_token", None)
     monkeypatch.setattr(telegram.settings, "telegram_webhook_secret_token", None)
     monkeypatch.setattr(telegram.settings, "telegram_default_family_id", None)
+    monkeypatch.setattr(telegram.settings, "telegram_default_account_id", None)
 
 
 def test_telegram_webhook_accepts_update_without_secret(monkeypatch) -> None:
@@ -334,3 +335,51 @@ def test_telegram_webhook_sends_review_category_callback(monkeypatch) -> None:
         BotCallbackAnswer(callback_query_id="callback-1", text="Category assigned"),
         BotReply(chat_id=42, text="Category assigned"),
     ]
+
+
+def test_telegram_webhook_sends_manual_transaction_reply(monkeypatch) -> None:
+    reset_telegram_settings(monkeypatch)
+    sent = {}
+
+    def fake_create_manual_transaction_text(
+        db,
+        *,
+        family_id_value: str | None,
+        account_id_value: str | None,
+        text: str,
+    ) -> str:
+        sent["family_id_value"] = family_id_value
+        sent["account_id_value"] = account_id_value
+        sent["text"] = text
+        return "Manual created"
+
+    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
+        sent["bot_token"] = bot_token
+        sent["replies"] = replies
+        return len(replies)
+
+    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
+    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
+    monkeypatch.setattr(telegram.settings, "telegram_default_account_id", "account-123")
+    monkeypatch.setattr(telegram, "create_manual_transaction_text", fake_create_manual_transaction_text)
+    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/telegram/webhook",
+        json={
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 42, "type": "private"},
+                "text": "АТБ 450 еда",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert sent["bot_token"] == "token-123"
+    assert sent["family_id_value"] == "family-123"
+    assert sent["account_id_value"] == "account-123"
+    assert sent["text"] == "АТБ 450 еда"
+    assert sent["replies"] == [BotReply(chat_id=42, text="Manual created")]
