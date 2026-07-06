@@ -63,6 +63,7 @@ Do not depend on the newest Telegram SDK features until the Python library suppo
 ## Local Setup Notes
 
 - Set `TELEGRAM_DEFAULT_FAMILY_ID` in backend `.env` to the demo seed family id before testing `/summary`.
+- Set `TELEGRAM_DEFAULT_ACCOUNT_ID` to the demo seed account id before testing manual text input.
 - This is a temporary MVP shortcut until Telegram users are linked to Family Cash Flow users/families in the database.
 
 ## Implemented
@@ -76,3 +77,4 @@ Do not depend on the newest Telegram SDK features until the Python library suppo
 - `/done <transaction_id>` command clears `needs_review` for one transaction in `TELEGRAM_DEFAULT_FAMILY_ID`.
 - `/review` inline buttons call `review_done:<transaction_id>` callbacks and reuse the same review-done service.
 - `/review` category buttons open a category picker and assign the selected category via callback.
+- Plain text like `АТБ 450 еда` creates a manual expense on `TELEGRAM_DEFAULT_ACCOUNT_ID`.

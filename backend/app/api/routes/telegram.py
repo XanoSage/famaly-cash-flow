@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.telegram_bot.client import TelegramApiError, send_bot_replies
 from app.telegram_bot.dispatcher import dispatch_update
+from app.telegram_bot.manual import create_manual_transaction_text
 from app.telegram_bot.review import (
     assign_category_text,
     build_category_menu_content,
@@ -60,6 +61,12 @@ def telegram_webhook(
             settings.telegram_default_family_id,
             transaction_id,
             category_id,
+        ),
+        text_message_provider=lambda text: create_manual_transaction_text(
+            db,
+            family_id_value=settings.telegram_default_family_id,
+            account_id_value=settings.telegram_default_account_id,
+            text=text,
         ),
     )
     try:

@@ -42,6 +42,7 @@ def dispatch_update(
     review_done_text_provider: Callable[[str | None], str] | None = None,
     review_categories_text_provider: Callable[[str | None], str | BotReplyContent] | None = None,
     review_category_text_provider: Callable[[str | None, str | None], str] | None = None,
+    text_message_provider: Callable[[str], str | None] | None = None,
 ) -> list[BotAction]:
     callback_replies = _dispatch_callback_query(
         update,
@@ -74,6 +75,10 @@ def dispatch_update(
         return [_to_bot_reply(chat_id, review_text_provider())]
     if command_name == "done" and review_done_text_provider is not None:
         return [BotReply(chat_id=chat_id, text=review_done_text_provider(_command_argument(text)))]
+    if command_name is None and text_message_provider is not None:
+        reply_text = text_message_provider(text)
+        if reply_text:
+            return [BotReply(chat_id=chat_id, text=reply_text)]
 
     return []
 
