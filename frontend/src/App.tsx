@@ -14,13 +14,14 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiUrl,
   authenticatedFetch,
   clearAccessToken,
   createTelegramLink,
   deleteTelegramLink,
+  getCategories,
   getTelegramLinkStatus,
   getCurrentUser,
   refreshAccessToken,
@@ -30,6 +31,7 @@ import {
   type TelegramLinkStatus,
   type TelegramLinkToken,
 } from "./api";
+import { ImportPage } from "./import/ImportPage";
 import {
   Area,
   AreaChart,
@@ -42,6 +44,8 @@ import {
 
 type Locale = "ru" | "uk";
 type ScopeFilter = "all" | "family" | "work_fop";
+type AppPage = "dashboard" | "import" | "account";
+type AppRoute = { page: AppPage; batchId?: string };
 
 type Summary = {
   income: string;
@@ -168,6 +172,9 @@ const copy = {
   ru: {
     title: "Семейный финансовый dashboard",
     subtitle: "Первый рабочий экран с реальными backend endpoints.",
+    navDashboard: "Дашборд",
+    navImport: "Импорт",
+    navAccount: "Аккаунт / Telegram",
     signIn: "Войти",
     signOut: "Выйти",
     email: "Email",
@@ -241,6 +248,9 @@ const copy = {
   uk: {
     title: "Сімейний фінансовий dashboard",
     subtitle: "Перший робочий екран з реальними backend endpoints.",
+    navDashboard: "Дашборд",
+    navImport: "Імпорт",
+    navAccount: "Обліковий запис / Telegram",
     signIn: "Увійти",
     signOut: "Вийти",
     email: "Email",
@@ -339,7 +349,18 @@ export function App() {
   const [telegramPending, setTelegramPending] = useState(false);
   const [telegramError, setTelegramError] = useState<string | null>(null);
   const [telegramCopied, setTelegramCopied] = useState(false);
+  const [route, setRoute] = useState<AppRoute>(() => readRoute());
   const hasAutoLoadedRef = useRef(false);
+
+  const handleAuthenticationFailure = useCallback((error: unknown) => {
+    if (error instanceof Error && error.name === "AuthenticationRequiredError") {
+      clearAccessToken();
+      setCurrentUser(null);
+      setTelegramStatus(null);
+      setTelegramLink(null);
+      setAuthStatus("unauthenticated");
+    }
+  }, []);
 
   const t = copy[locale];
   const formatter = useMemo(
@@ -355,6 +376,12 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("locale", locale);
   }, [locale]);
+
+  useEffect(() => {
+    const onPopState = () => setRoute(readRoute());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     localStorage.removeItem("familyId");
@@ -458,11 +485,7 @@ export function App() {
   async function loadCategories() {
     setCategoriesError(null);
     try {
-      const response = await authenticatedFetch(apiUrl("/categories"));
-      if (!response.ok) {
-        throw new Error(dashboardErrorMessage(response.status, t));
-      }
-      const data = (await response.json()) as CategoryList;
+      const data = await getCategories();
       setCategories(data.rows);
     } catch (error) {
       handleAuthenticationFailure(error);
@@ -628,14 +651,13 @@ export function App() {
     }
   }
 
-  function handleAuthenticationFailure(error: unknown) {
-    if (error instanceof Error && error.name === "AuthenticationRequiredError") {
-      clearAccessToken();
-      setCurrentUser(null);
-      setTelegramStatus(null);
-      setTelegramLink(null);
-      setAuthStatus("unauthenticated");
-    }
+  function navigateTo(page: AppPage, batchId?: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", page);
+    if (page === "import" && batchId) url.searchParams.set("batch", batchId);
+    else url.searchParams.delete("batch");
+    window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setRoute({ page, ...(page === "import" && batchId ? { batchId } : {}) });
   }
 
   const dashboard = state.data;
@@ -705,7 +727,7 @@ export function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Family Cash Flow</p>
-          <h1>{t.title}</h1>
+          <h1>{route.page === "dashboard" ? t.title : route.page === "import" ? t.navImport : t.telegramTitle}</h1>
           <p className="subtitle">{t.account}: {currentUser?.family_name} · {currentUser?.display_name}</p>
         </div>
         <div className="account-controls">
@@ -722,7 +744,47 @@ export function App() {
         </div>
       </header>
 
-      <section className="panel telegram-panel" aria-labelledby="telegram-heading">
+      <nav className="app-navigation" aria-label={locale === "uk" ? "Навігація" : "Навигация"}>
+        <button
+          aria-current={route.page === "dashboard" ? "page" : undefined}
+          className={route.page === "dashboard" ? "is-active" : ""}
+          onClick={() => navigateTo("dashboard")}
+          type="button"
+        >
+          {t.navDashboard}
+        </button>
+        <button
+          aria-current={route.page === "import" ? "page" : undefined}
+          className={route.page === "import" ? "is-active" : ""}
+          onClick={() => navigateTo("import")}
+          type="button"
+        >
+          {t.navImport}
+        </button>
+        <button
+          aria-current={route.page === "account" ? "page" : undefined}
+          className={route.page === "account" ? "is-active" : ""}
+          onClick={() => navigateTo("account")}
+          type="button"
+        >
+          {t.navAccount}
+        </button>
+      </nav>
+
+      {route.page === "import" && (
+        <ImportPage
+          batchId={route.batchId}
+          locale={locale}
+          onAuthFailure={handleAuthenticationFailure}
+          onBatchIdChange={(batchId) => navigateTo("import", batchId)}
+          onGoDashboard={() => {
+            navigateTo("dashboard");
+            void loadDashboard();
+          }}
+        />
+      )}
+
+      {route.page === "account" && <section className="panel telegram-panel" aria-labelledby="telegram-heading">
         <div className="telegram-heading">
           <div>
             <p className="eyebrow">{t.telegramTitle}</p>
@@ -780,8 +842,9 @@ export function App() {
           </div>
         )}
         {telegramError && <p className="telegram-error" role="alert">{telegramError}</p>}
-      </section>
+      </section>}
 
+      {route.page === "dashboard" && <>
       <form className="filters" onSubmit={handleSubmit}>
         <label className="field">
           <span>{t.from}</span>
@@ -983,6 +1046,7 @@ export function App() {
           </section>
         </>
       )}
+      </>}
     </main>
   );
 }
@@ -1210,4 +1274,15 @@ function readStoredValue(key: string, fallback: string) {
     return fallback;
   }
   return localStorage.getItem(key) ?? fallback;
+}
+
+function readRoute(): AppRoute {
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get("page");
+  if (page === "account") return { page: "account" };
+  if (page === "import") {
+    const batchId = params.get("batch") ?? undefined;
+    return { page: "import", ...(batchId ? { batchId } : {}) };
+  }
+  return { page: "dashboard" };
 }

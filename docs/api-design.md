@@ -98,6 +98,12 @@ only after a Family-scoped lookup; same-file repeats return the first row number
 ## Categories
 
 - `GET /categories` - список категорий с подкатегориями.
+
+## Accounts
+
+- `GET /accounts` - authenticated user's active Accounts in their Family, with an
+  `is_default` marker from that user's preferences. The endpoint does not accept `family_id` as an
+  authorization input.
 - `POST /categories` - создать категорию.
 - `POST /categories/{id}/subcategories` - создать подкатегорию.
 - `PATCH /categories/{id}` - редактировать категорию.
