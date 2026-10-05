@@ -6,6 +6,7 @@
 
 ## Документация
 
+- [Current Implementation State (2026-10)](docs/current-state-2026-10.md)
 - [Product Requirements](docs/product-requirements.md)
 - [MVP Scope](docs/mvp-scope.md)
 - [Architecture](docs/architecture.md)
