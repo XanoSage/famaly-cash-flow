@@ -50,7 +50,15 @@
 - Merchants.
 - Cash.
 
-## Phase 7 - Deployment
+## Phase 7 - Telegram Core Client
+
+- Link a Telegram `from.id` to an authenticated application user using expiring one-time tokens.
+- Derive family access from the linked user and limit financial commands to private chats.
+- Provide quick manual entry, summaries, review actions, category correction, and account selection.
+- Keep Telegram link controls in the authenticated Web account area.
+- Add identity, family-isolation, replay, account-selection, and manual-entry tests.
+
+## Phase 8 - Deployment
 
 - Dockerfile.
 - Docker Compose.
@@ -62,12 +70,7 @@
 
 ## Later
 
-- Telegram bot:
-  - webhook skeleton;
-  - summary and review commands;
-  - review queue inline actions;
-  - manual transaction draft from chat text;
-  - rich summaries and Mini App later.
+- Telegram notifications and Mini App.
 - Лимиты и бюджеты.
 - Сравнение периодов.
 - Аномалии.

@@ -41,6 +41,36 @@ Fields:
 - `created_at`
 - `updated_at`
 
+## TelegramIdentity
+
+One active Telegram account mapping per application user and one application user per immutable
+Telegram sender ID.
+
+Fields:
+
+- `id`
+- `user_id` - application User foreign key
+- `telegram_user_id` - unique Telegram `from.id` (never the chat ID or username)
+- `private_chat_id` - destination for private bot replies
+- `username`, `first_name`, `last_name` - display metadata only
+- `linked_at`, `last_seen_at`, `is_active`
+- `created_at`, `updated_at`
+
+Database uniqueness constraints cover both `user_id` and `telegram_user_id`.
+
+## TelegramLinkToken
+
+Short-lived one-time account-link token. PostgreSQL stores only its SHA-256 hash.
+
+Fields:
+
+- `id`
+- `user_id`
+- `token_hash`
+- `expires_at`
+- `used_at`
+- `created_at`, `updated_at`
+
 ## Account
 
 Источник денег: карта, наличный кошелек, позже другие счета.
@@ -228,6 +258,8 @@ Fields:
 - `id`
 - `user_id`
 - `language`: `ru`, `uk`
+- `default_account_id` - nullable account selection; service validation requires an active account
+  in the user's family
 - `created_at`
 - `updated_at`
 

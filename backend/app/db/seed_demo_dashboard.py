@@ -15,7 +15,7 @@ from app.models.category import Category
 from app.models.family import Family
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
-from app.models.user import User
+from app.models.user import User, UserPreference
 
 DEMO_FAMILY_NAME = "Demo Family Cash Flow"
 
@@ -35,11 +35,19 @@ def seed_demo_dashboard(
 ) -> DemoSeedResult:
     if not demo_email.strip() or not demo_password or len(demo_password) < 12:
         raise ValueError(
-            "Set DEMO_USER_EMAIL and a DEMO_USER_PASSWORD of at least 12 characters for local seeding."
+            "Set DEMO_USER_EMAIL and a DEMO_USER_PASSWORD of at least 12 characters "
+            "for local seeding."
         )
     family = _get_or_create_family(db)
     owner = _get_or_create_owner(db, family, demo_email, demo_password)
     account = _get_or_create_account(db, family, owner)
+    account.is_active = True
+    preference = db.scalar(select(UserPreference).where(UserPreference.user_id == owner.id))
+    if preference is None:
+        preference = UserPreference(user=owner, default_account=account)
+        db.add(preference)
+    else:
+        preference.default_account = account
     _get_or_create_payment_instrument(db, account)
 
     categories = {

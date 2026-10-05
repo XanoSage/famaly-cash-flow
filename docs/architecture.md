@@ -28,7 +28,7 @@ Web user
 Family scope is derived from the persisted current user. User-facing routes do not accept a
 client-selected family ID as an authorization input.
 
-Telegram identity linking is the next implementation slice. Once linked, its intended path is:
+Telegram identity is linked to the same application user with a short-lived Web-issued token:
 
 ```text
 Telegram user
@@ -39,7 +39,11 @@ Telegram user
   -> PostgreSQL
 ```
 
-Telegram identity mapping and secure linking are not implemented in this branch.
+The webhook maps immutable Telegram `from.id` through `TelegramIdentity`; it does not accept a
+family identifier from the update. Financial commands and callbacks require a private chat. Both
+clients use the existing analytics services and the shared transaction review and manual
+transaction services. PostgreSQL is the source of truth; link tokens are stored as SHA-256 hashes
+and consumed with a conditional update.
 
 Стек MVP:
 

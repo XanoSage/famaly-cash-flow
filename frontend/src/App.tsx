@@ -19,11 +19,16 @@ import {
   apiUrl,
   authenticatedFetch,
   clearAccessToken,
+  createTelegramLink,
+  deleteTelegramLink,
+  getTelegramLinkStatus,
   getCurrentUser,
   refreshAccessToken,
   signIn,
   signOut,
   type CurrentUser,
+  type TelegramLinkStatus,
+  type TelegramLinkToken,
 } from "./api";
 import {
   Area,
@@ -215,6 +220,23 @@ const copy = {
     needsReview: "на проверку",
     noRows: "Нет данных за выбранный период",
     language: "Язык",
+    telegramTitle: "Telegram",
+    telegramLinked: "Telegram связан",
+    telegramNotLinked: "Telegram не связан",
+    telegramLinkedAs: "Аккаунт Telegram",
+    telegramGenerate: "Создать ссылку",
+    telegramRegenerate: "Создать новую ссылку",
+    telegramUnlink: "Отвязать Telegram",
+    telegramOpen: "Открыть Telegram",
+    telegramCopy: "Скопировать ссылку",
+    telegramCopyToken: "Скопировать токен",
+    telegramCopied: "Скопировано",
+    telegramExpires: "Ссылка действительна до",
+    telegramManualStart: "Откройте своего бота и отправьте команду /start с этим токеном:",
+    telegramRefresh: "Обновить статус",
+    telegramLoadError: "Не удалось загрузить статус Telegram.",
+    telegramActionError: "Не удалось выполнить действие с Telegram.",
+    telegramUnlinkConfirm: "Отвязать Telegram от вашего аккаунта?",
   },
   uk: {
     title: "Сімейний фінансовий dashboard",
@@ -271,6 +293,23 @@ const copy = {
     needsReview: "на перевірку",
     noRows: "Немає даних за вибраний період",
     language: "Мова",
+    telegramTitle: "Telegram",
+    telegramLinked: "Telegram підключено",
+    telegramNotLinked: "Telegram не підключено",
+    telegramLinkedAs: "Обліковий запис Telegram",
+    telegramGenerate: "Створити посилання",
+    telegramRegenerate: "Створити нове посилання",
+    telegramUnlink: "Від'єднати Telegram",
+    telegramOpen: "Відкрити Telegram",
+    telegramCopy: "Скопіювати посилання",
+    telegramCopyToken: "Скопіювати токен",
+    telegramCopied: "Скопійовано",
+    telegramExpires: "Посилання дійсне до",
+    telegramManualStart: "Відкрийте свого бота та надішліть команду /start із цим токеном:",
+    telegramRefresh: "Оновити статус",
+    telegramLoadError: "Не вдалося завантажити статус Telegram.",
+    telegramActionError: "Не вдалося виконати дію з Telegram.",
+    telegramUnlinkConfirm: "Від'єднати Telegram від вашого облікового запису?",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -295,6 +334,11 @@ export function App() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [updatingTransactionId, setUpdatingTransactionId] = useState<string | null>(null);
+  const [telegramStatus, setTelegramStatus] = useState<TelegramLinkStatus | null>(null);
+  const [telegramLink, setTelegramLink] = useState<TelegramLinkToken | null>(null);
+  const [telegramPending, setTelegramPending] = useState(false);
+  const [telegramError, setTelegramError] = useState<string | null>(null);
+  const [telegramCopied, setTelegramCopied] = useState(false);
   const hasAutoLoadedRef = useRef(false);
 
   const t = copy[locale];
@@ -337,6 +381,37 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    let cancelled = false;
+    const loadStatus = async () => {
+      try {
+        const status = await getTelegramLinkStatus();
+        if (!cancelled) {
+          setTelegramStatus(status);
+          setTelegramError(null);
+          if (status.is_linked) setTelegramLink(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          handleAuthenticationFailure(error);
+          setTelegramError(errorMessage(error, t.telegramLoadError));
+        }
+      }
+    };
+    void loadStatus();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadStatus();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [authStatus, t.telegramLoadError]);
 
   useEffect(() => {
     if (state.data && authStatus === "authenticated") {
@@ -495,13 +570,70 @@ export function App() {
     setState({ status: "idle", data: null, error: null });
     setTransactionsState({ status: "idle", data: null, error: null });
     setCategories([]);
+    setTelegramStatus(null);
+    setTelegramLink(null);
+    setTelegramError(null);
     setAuthStatus("unauthenticated");
+  }
+
+  async function handleCreateTelegramLink() {
+    setTelegramPending(true);
+    setTelegramError(null);
+    setTelegramCopied(false);
+    try {
+      const link = await createTelegramLink();
+      setTelegramLink(link);
+    } catch (error) {
+      handleAuthenticationFailure(error);
+      setTelegramError(errorMessage(error, t.telegramActionError));
+    } finally {
+      setTelegramPending(false);
+    }
+  }
+
+  async function refreshTelegramStatus() {
+    try {
+      const status = await getTelegramLinkStatus();
+      setTelegramStatus(status);
+      setTelegramError(null);
+      if (status.is_linked) setTelegramLink(null);
+    } catch (error) {
+      handleAuthenticationFailure(error);
+      setTelegramError(errorMessage(error, t.telegramLoadError));
+    }
+  }
+
+  async function handleUnlinkTelegram() {
+    if (!window.confirm(t.telegramUnlinkConfirm)) return;
+    setTelegramPending(true);
+    setTelegramError(null);
+    try {
+      await deleteTelegramLink();
+      setTelegramStatus({ is_linked: false, username: null, first_name: null, linked_at: null });
+      setTelegramLink(null);
+    } catch (error) {
+      handleAuthenticationFailure(error);
+      setTelegramError(errorMessage(error, t.telegramActionError));
+    } finally {
+      setTelegramPending(false);
+    }
+  }
+
+  async function handleCopyTelegramValue(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setTelegramCopied(true);
+    } catch {
+      setTelegramError(t.telegramActionError);
+    }
   }
 
   function handleAuthenticationFailure(error: unknown) {
     if (error instanceof Error && error.name === "AuthenticationRequiredError") {
       clearAccessToken();
       setCurrentUser(null);
+      setTelegramStatus(null);
+      setTelegramLink(null);
       setAuthStatus("unauthenticated");
     }
   }
@@ -589,6 +721,66 @@ export function App() {
           </button>
         </div>
       </header>
+
+      <section className="panel telegram-panel" aria-labelledby="telegram-heading">
+        <div className="telegram-heading">
+          <div>
+            <p className="eyebrow">{t.telegramTitle}</p>
+            <h2 id="telegram-heading">
+              {telegramStatus?.is_linked ? t.telegramLinked : t.telegramNotLinked}
+            </h2>
+          </div>
+          <button
+            className="secondary-button"
+            disabled={telegramPending}
+            onClick={() => void refreshTelegramStatus()}
+            type="button"
+          >
+            {t.telegramRefresh}
+          </button>
+        </div>
+        {telegramStatus?.is_linked ? (
+          <div className="telegram-actions">
+            <p>
+              {t.telegramLinkedAs}: {telegramStatus.username ? `@${telegramStatus.username}` : telegramStatus.first_name ?? "—"}
+            </p>
+            <button className="secondary-button" disabled={telegramPending} onClick={() => void handleUnlinkTelegram()} type="button">
+              {t.telegramUnlink}
+            </button>
+          </div>
+        ) : (
+          <div className="telegram-actions">
+            <button className="primary-button" disabled={telegramPending} onClick={() => void handleCreateTelegramLink()} type="button">
+              {telegramPending ? <RefreshCw className="spin" /> : null}
+              <span>{telegramLink ? t.telegramRegenerate : t.telegramGenerate}</span>
+            </button>
+            {telegramLink && (
+              <div className="telegram-link-result">
+                <p>{t.telegramExpires}: {formatTelegramExpiry(telegramLink.expires_at, locale)}</p>
+                {telegramLink.telegram_url ? (
+                  <div className="telegram-link-actions">
+                    <a className="primary-button telegram-anchor" href={telegramLink.telegram_url} rel="noreferrer" target="_blank">
+                      {t.telegramOpen}
+                    </a>
+                    <button className="secondary-button" onClick={() => void handleCopyTelegramValue(telegramLink.telegram_url!)} type="button">
+                      {telegramCopied ? t.telegramCopied : t.telegramCopy}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="telegram-manual-token">
+                    <p>{t.telegramManualStart}</p>
+                    <code>/start {telegramLink.token}</code>
+                    <button className="secondary-button" onClick={() => void handleCopyTelegramValue(telegramLink.token)} type="button">
+                      {telegramCopied ? t.telegramCopied : t.telegramCopyToken}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {telegramError && <p className="telegram-error" role="alert">{telegramError}</p>}
+      </section>
 
       <form className="filters" onSubmit={handleSubmit}>
         <label className="field">
@@ -1004,6 +1196,13 @@ function dashboardErrorMessage(status: number, t: Record<string, string>) {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function formatTelegramExpiry(value: string, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale === "uk" ? "uk-UA" : "ru-UA", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function readStoredValue(key: string, fallback: string) {

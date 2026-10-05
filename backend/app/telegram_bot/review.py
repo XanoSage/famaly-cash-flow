@@ -6,22 +6,17 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.services.transaction_review import (
+    CategoryNotFoundError,
+    TransactionNotFoundError,
+    TransactionReviewService,
+)
 from app.telegram_bot.dispatcher import BotReplyContent
 
-
-REVIEW_NOT_CONFIGURED_TEXT = (
-    "Review queue пока не настроена.\n\n"
-    "Добавь TELEGRAM_DEFAULT_FAMILY_ID в backend .env, чтобы команда /review знала, "
-    "для какой семьи искать операции."
-)
-REVIEW_INVALID_FAMILY_ID_TEXT = (
-    "TELEGRAM_DEFAULT_FAMILY_ID настроен неверно.\n\n"
-    "Укажи UUID семьи из demo seed или из базы."
-)
 REVIEW_EMPTY_TEXT = "Операций на проверку нет."
 REVIEW_DONE_USAGE_TEXT = "Используй команду /done <transaction_id> из списка /review."
 REVIEW_TRANSACTION_NOT_FOUND_TEXT = "Операция не найдена в текущей семье."
@@ -33,84 +28,58 @@ REVIEW_CATEGORY_NOT_FOUND_TEXT = "Категория не найдена для 
 REVIEW_CATEGORY_ASSIGNED_TEXT = "Категория назначена, операция отмечена как проверенная."
 
 
-def build_review_text(db: Session, family_id_value: str | None, *, limit: int = 5) -> str:
-    if family_id_value is None or not family_id_value.strip():
-        return REVIEW_NOT_CONFIGURED_TEXT
-
-    family_id = _parse_family_id(family_id_value)
-    if family_id is None:
-        return REVIEW_INVALID_FAMILY_ID_TEXT
-
-    transactions = _load_review_transactions(db, family_id=family_id, limit=limit)
+def build_review_text(db: Session, family_id: UUID, *, limit: int = 5) -> str:
+    transactions = TransactionReviewService(db).list_pending(family_id=family_id, limit=limit)
     return format_review_text(transactions)
 
 
 def build_review_reply_content(
     db: Session,
-    family_id_value: str | None,
+    family_id: UUID,
     *,
     limit: int = 5,
 ) -> BotReplyContent:
-    if family_id_value is None or not family_id_value.strip():
-        return BotReplyContent(text=REVIEW_NOT_CONFIGURED_TEXT)
-
-    family_id = _parse_family_id(family_id_value)
-    if family_id is None:
-        return BotReplyContent(text=REVIEW_INVALID_FAMILY_ID_TEXT)
-
-    transactions = _load_review_transactions(db, family_id=family_id, limit=limit)
+    transactions = TransactionReviewService(db).list_pending(family_id=family_id, limit=limit)
     return BotReplyContent(
         text=format_review_text(transactions),
         reply_markup=_review_reply_markup(transactions),
     )
 
 
-def mark_reviewed_text(db: Session, family_id_value: str | None, transaction_id_value: str | None) -> str:
-    if family_id_value is None or not family_id_value.strip():
-        return REVIEW_NOT_CONFIGURED_TEXT
-
-    family_id = _parse_family_id(family_id_value)
-    if family_id is None:
-        return REVIEW_INVALID_FAMILY_ID_TEXT
-
-    transaction_id = _parse_family_id(transaction_id_value)
+def mark_reviewed_text(
+    db: Session,
+    family_id: UUID,
+    transaction_id_value: str | None,
+) -> str:
+    transaction_id = _parse_uuid(transaction_id_value)
     if transaction_id is None:
         return REVIEW_DONE_USAGE_TEXT
-
-    transaction = db.scalar(
-        select(Transaction).where(
-            Transaction.id == transaction_id,
-            Transaction.family_id == family_id,
-            Transaction.deleted_at.is_(None),
+    try:
+        changed = TransactionReviewService(db).mark_reviewed(
+            family_id=family_id,
+            transaction_id=transaction_id,
         )
-    )
-    if transaction is None:
+    except TransactionNotFoundError:
         return REVIEW_TRANSACTION_NOT_FOUND_TEXT
-    if not transaction.needs_review:
-        return REVIEW_ALREADY_DONE_TEXT
-
-    transaction.needs_review = False
-    db.commit()
-    return REVIEW_MARKED_DONE_TEXT
+    return REVIEW_MARKED_DONE_TEXT if changed else REVIEW_ALREADY_DONE_TEXT
 
 
 def build_category_menu_content(
     db: Session,
-    family_id_value: str | None,
+    family_id: UUID,
     transaction_id_value: str | None,
     *,
     limit: int = 10,
 ) -> BotReplyContent:
-    family_id = _configured_family_id(family_id_value)
-    if isinstance(family_id, str):
-        return BotReplyContent(text=family_id)
-
     transaction_id = _decode_uuid_token(transaction_id_value)
     if transaction_id is None:
         return BotReplyContent(text=REVIEW_TRANSACTION_NOT_FOUND_TEXT)
-
-    transaction = _load_transaction(db, family_id=family_id, transaction_id=transaction_id)
-    if transaction is None:
+    try:
+        transaction = TransactionReviewService(db).get_for_review(
+            family_id=family_id,
+            transaction_id=transaction_id,
+        )
+    except TransactionNotFoundError:
         return BotReplyContent(text=REVIEW_TRANSACTION_NOT_FOUND_TEXT)
 
     categories = _load_categories(db, family_id=family_id, limit=limit)
@@ -125,35 +94,24 @@ def build_category_menu_content(
 
 def assign_category_text(
     db: Session,
-    family_id_value: str | None,
+    family_id: UUID,
     transaction_id_value: str | None,
     category_id_value: str | None,
 ) -> str:
-    family_id = _configured_family_id(family_id_value)
-    if isinstance(family_id, str):
-        return family_id
-
     transaction_id = _decode_uuid_token(transaction_id_value)
     category_id = _decode_uuid_token(category_id_value)
     if transaction_id is None or category_id is None:
         return REVIEW_CATEGORY_USAGE_TEXT
-
-    transaction = _load_transaction(db, family_id=family_id, transaction_id=transaction_id)
-    if transaction is None:
-        return REVIEW_TRANSACTION_NOT_FOUND_TEXT
-
-    category = db.scalar(
-        select(Category).where(
-            Category.id == category_id,
-            or_(Category.family_id == family_id, Category.family_id.is_(None)),
+    try:
+        TransactionReviewService(db).assign_category(
+            family_id=family_id,
+            transaction_id=transaction_id,
+            category_id=category_id,
         )
-    )
-    if category is None:
+    except TransactionNotFoundError:
+        return REVIEW_TRANSACTION_NOT_FOUND_TEXT
+    except CategoryNotFoundError:
         return REVIEW_CATEGORY_NOT_FOUND_TEXT
-
-    transaction.category = category
-    transaction.needs_review = False
-    db.commit()
     return REVIEW_CATEGORY_ASSIGNED_TEXT
 
 
@@ -171,32 +129,6 @@ def format_review_text(transactions: list[Transaction]) -> str:
             f"{title} | {category_name}"
         )
     return "\n".join(lines)
-
-
-def _load_review_transactions(db: Session, *, family_id: UUID, limit: int) -> list[Transaction]:
-    return db.scalars(
-        select(Transaction)
-        .options(joinedload(Transaction.merchant), joinedload(Transaction.category))
-        .where(
-            Transaction.family_id == family_id,
-            Transaction.deleted_at.is_(None),
-            Transaction.needs_review.is_(True),
-        )
-        .order_by(Transaction.occurred_at.desc(), Transaction.id.desc())
-        .limit(limit)
-    ).all()
-
-
-def _load_transaction(db: Session, *, family_id: UUID, transaction_id: UUID) -> Transaction | None:
-    return db.scalar(
-        select(Transaction)
-        .options(joinedload(Transaction.category))
-        .where(
-            Transaction.id == transaction_id,
-            Transaction.family_id == family_id,
-            Transaction.deleted_at.is_(None),
-        )
-    )
 
 
 def _load_categories(db: Session, *, family_id: UUID, limit: int) -> list[Category]:
@@ -220,30 +152,13 @@ def _transaction_title(transaction: Transaction) -> str:
     return transaction.flow_type
 
 
-def _parse_family_id(value: str | None) -> UUID | None:
-    if value is None:
-        return None
-    try:
-        return UUID(value)
-    except ValueError:
-        return None
-
-
 def _format_money(value: Decimal) -> str:
     return f"{value:,.2f}".replace(",", " ")
 
 
-def _configured_family_id(value: str | None) -> UUID | str:
-    if value is None or not value.strip():
-        return REVIEW_NOT_CONFIGURED_TEXT
-
-    family_id = _parse_family_id(value)
-    if family_id is None:
-        return REVIEW_INVALID_FAMILY_ID_TEXT
-    return family_id
-
-
-def _review_reply_markup(transactions: list[Transaction]) -> dict[str, list[list[dict[str, str]]]] | None:
+def _review_reply_markup(
+    transactions: list[Transaction],
+) -> dict[str, list[list[dict[str, str]]]] | None:
     if not transactions:
         return None
 
@@ -295,4 +210,13 @@ def _decode_uuid_token(value: str | None) -> UUID | None:
         padded_value = value + "=" * (-len(value) % 4)
         return UUID(bytes=base64.urlsafe_b64decode(padded_value.encode("ascii")))
     except (binascii.Error, ValueError, TypeError):
-        return _parse_family_id(value)
+        return _parse_uuid(value)
+
+
+def _parse_uuid(value: str | None) -> UUID | None:
+    if value is None:
+        return None
+    try:
+        return UUID(value)
+    except ValueError:
+        return None

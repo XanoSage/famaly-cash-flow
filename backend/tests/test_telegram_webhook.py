@@ -1,20 +1,49 @@
+from collections.abc import Generator
+
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
+from app import models  # noqa: F401
 from app.api.routes import telegram
+from app.db.base import Base
+from app.db.session import get_db
 from app.main import app
-from app.telegram_bot.dispatcher import BotCallbackAnswer, BotReply, BotReplyContent, START_TEXT
+from app.telegram_bot.context import PRIVATE_CHAT_ONLY_TEXT, START_TEXT, UNLINKED_TELEGRAM_TEXT
+from app.telegram_bot.dispatcher import BotReply
 
 
-def reset_telegram_settings(monkeypatch) -> None:
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", None)
+@pytest.fixture()
+def db_session() -> Generator[Session, None, None]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    with session_factory() as session:
+        yield session
+
+
+@pytest.fixture()
+def client(db_session: Session) -> Generator[TestClient, None, None]:
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def test_telegram_webhook_accepts_updates_when_no_secret_is_configured(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(telegram.settings, "telegram_webhook_secret_token", None)
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", None)
-    monkeypatch.setattr(telegram.settings, "telegram_default_account_id", None)
-
-
-def test_telegram_webhook_accepts_update_without_secret(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    client = TestClient(app)
 
     response = client.post("/api/v1/telegram/webhook", json={"update_id": 1})
 
@@ -22,364 +51,83 @@ def test_telegram_webhook_accepts_update_without_secret(monkeypatch) -> None:
     assert response.json() == {"ok": True}
 
 
-def test_telegram_webhook_rejects_invalid_secret(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
+def test_telegram_webhook_rejects_missing_or_invalid_secret(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(telegram.settings, "telegram_webhook_secret_token", "expected-secret")
-    client = TestClient(app)
 
-    response = client.post(
+    missing = client.post("/api/v1/telegram/webhook", json={"update_id": 1})
+    invalid = client.post(
         "/api/v1/telegram/webhook",
         headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"},
         json={"update_id": 1},
     )
 
-    assert response.status_code == 401
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
 
 
-def test_telegram_webhook_accepts_valid_secret(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
+def test_telegram_webhook_accepts_valid_secret_and_dispatches_safe_start_reply(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: dict[str, object] = {}
     monkeypatch.setattr(telegram.settings, "telegram_webhook_secret_token", "expected-secret")
-    client = TestClient(app)
+    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "test-bot-token")
+    monkeypatch.setattr(
+        telegram,
+        "send_bot_replies",
+        lambda token, replies: sent.update(token=token, replies=replies) or len(replies),
+    )
 
     response = client.post(
         "/api/v1/telegram/webhook",
         headers={"X-Telegram-Bot-Api-Secret-Token": "expected-secret"},
-        json={"update_id": 1},
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"ok": True}
-
-
-def test_telegram_webhook_sends_dispatcher_replies(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
         json={
             "update_id": 1,
             "message": {
                 "message_id": 10,
                 "chat": {"id": 42, "type": "private"},
+                "from": {"id": 77},
                 "text": "/start",
             },
         },
     )
 
     assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
+    assert sent["token"] == "test-bot-token"
     assert sent["replies"] == [BotReply(chat_id=42, text=START_TEXT)]
 
 
-def test_telegram_webhook_sends_summary_reply(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_build_summary_text(db, family_id_value: str | None) -> str:
-        sent["family_id_value"] = family_id_value
-        return "Summary text"
-
-    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram, "build_summary_text", fake_build_summary_text)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
+@pytest.mark.parametrize(
+    ("chat_type", "expected"),
+    [("private", UNLINKED_TELEGRAM_TEXT), ("group", PRIVATE_CHAT_ONLY_TEXT)],
+)
+def test_unlinked_telegram_user_never_gets_summary_data(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    chat_type: str,
+    expected: str,
+) -> None:
+    sent: list[BotReply] = []
+    monkeypatch.setattr(
+        telegram, "send_bot_replies", lambda _token, replies: sent.extend(replies) or 1
+    )
 
     response = client.post(
         "/api/v1/telegram/webhook",
         json={
-            "update_id": 1,
+            "update_id": 2,
             "message": {
-                "message_id": 10,
-                "chat": {"id": 42, "type": "private"},
+                "message_id": 11,
+                "chat": {"id": 42, "type": chat_type},
+                "from": {"id": 77},
                 "text": "/summary",
             },
         },
     )
 
     assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["replies"] == [BotReply(chat_id=42, text="Summary text")]
-
-
-def test_telegram_webhook_sends_review_reply(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_build_review_reply_content(db, family_id_value: str | None) -> BotReplyContent:
-        sent["family_id_value"] = family_id_value
-        return BotReplyContent(
-            text="Review text",
-            reply_markup={"inline_keyboard": [[{"text": "Done", "callback_data": "review_done:1"}]]},
-        )
-
-    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram, "build_review_reply_content", fake_build_review_reply_content)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
-        json={
-            "update_id": 1,
-            "message": {
-                "message_id": 10,
-                "chat": {"id": 42, "type": "private"},
-                "text": "/review",
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["replies"] == [
-        BotReply(
-            chat_id=42,
-            text="Review text",
-            reply_markup={"inline_keyboard": [[{"text": "Done", "callback_data": "review_done:1"}]]},
-        )
-    ]
-
-
-def test_telegram_webhook_sends_review_done_reply(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_mark_reviewed_text(db, family_id_value: str | None, transaction_id_value: str | None) -> str:
-        sent["family_id_value"] = family_id_value
-        sent["transaction_id_value"] = transaction_id_value
-        return "Done text"
-
-    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram, "mark_reviewed_text", fake_mark_reviewed_text)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
-        json={
-            "update_id": 1,
-            "message": {
-                "message_id": 10,
-                "chat": {"id": 42, "type": "private"},
-                "text": "/done transaction-123",
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["transaction_id_value"] == "transaction-123"
-    assert sent["replies"] == [BotReply(chat_id=42, text="Done text")]
-
-
-def test_telegram_webhook_sends_review_done_callback_answer(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_mark_reviewed_text(db, family_id_value: str | None, transaction_id_value: str | None) -> str:
-        sent["family_id_value"] = family_id_value
-        sent["transaction_id_value"] = transaction_id_value
-        return "Done text"
-
-    def fake_send_bot_replies(bot_token: str | None, replies):
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram, "mark_reviewed_text", fake_mark_reviewed_text)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
-        json={
-            "update_id": 1,
-            "callback_query": {
-                "id": "callback-1",
-                "data": "review_done:transaction-123",
-                "message": {"chat": {"id": 42, "type": "private"}},
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["transaction_id_value"] == "transaction-123"
-    assert sent["replies"] == [
-        BotCallbackAnswer(callback_query_id="callback-1", text="Done text"),
-        BotReply(chat_id=42, text="Done text"),
-    ]
-
-
-def test_telegram_webhook_sends_review_categories_callback(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-    reply_markup = {"inline_keyboard": [[{"text": "Food", "callback_data": "review_category:t:c"}]]}
-
-    def fake_build_category_menu_content(db, family_id_value: str | None, transaction_id_value: str | None):
-        sent["family_id_value"] = family_id_value
-        sent["transaction_id_value"] = transaction_id_value
-        return BotReplyContent(text="Choose category", reply_markup=reply_markup)
-
-    def fake_send_bot_replies(bot_token: str | None, replies):
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram, "build_category_menu_content", fake_build_category_menu_content)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
-        json={
-            "update_id": 1,
-            "callback_query": {
-                "id": "callback-1",
-                "data": "review_categories:transaction-token",
-                "message": {"chat": {"id": 42, "type": "private"}},
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["transaction_id_value"] == "transaction-token"
-    assert sent["replies"] == [
-        BotCallbackAnswer(callback_query_id="callback-1", text="Choose category"),
-        BotReply(chat_id=42, text="Choose category", reply_markup=reply_markup),
-    ]
-
-
-def test_telegram_webhook_sends_review_category_callback(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_assign_category_text(
-        db,
-        family_id_value: str | None,
-        transaction_id_value: str | None,
-        category_id_value: str | None,
-    ) -> str:
-        sent["family_id_value"] = family_id_value
-        sent["transaction_id_value"] = transaction_id_value
-        sent["category_id_value"] = category_id_value
-        return "Category assigned"
-
-    def fake_send_bot_replies(bot_token: str | None, replies):
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram, "assign_category_text", fake_assign_category_text)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
-        json={
-            "update_id": 1,
-            "callback_query": {
-                "id": "callback-1",
-                "data": "review_category:transaction-token:category-token",
-                "message": {"chat": {"id": 42, "type": "private"}},
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["transaction_id_value"] == "transaction-token"
-    assert sent["category_id_value"] == "category-token"
-    assert sent["replies"] == [
-        BotCallbackAnswer(callback_query_id="callback-1", text="Category assigned"),
-        BotReply(chat_id=42, text="Category assigned"),
-    ]
-
-
-def test_telegram_webhook_sends_manual_transaction_reply(monkeypatch) -> None:
-    reset_telegram_settings(monkeypatch)
-    sent = {}
-
-    def fake_create_manual_transaction_text(
-        db,
-        *,
-        family_id_value: str | None,
-        account_id_value: str | None,
-        text: str,
-    ) -> str:
-        sent["family_id_value"] = family_id_value
-        sent["account_id_value"] = account_id_value
-        sent["text"] = text
-        return "Manual created"
-
-    def fake_send_bot_replies(bot_token: str | None, replies: list[BotReply]) -> int:
-        sent["bot_token"] = bot_token
-        sent["replies"] = replies
-        return len(replies)
-
-    monkeypatch.setattr(telegram.settings, "telegram_bot_token", "token-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_family_id", "family-123")
-    monkeypatch.setattr(telegram.settings, "telegram_default_account_id", "account-123")
-    monkeypatch.setattr(telegram, "create_manual_transaction_text", fake_create_manual_transaction_text)
-    monkeypatch.setattr(telegram, "send_bot_replies", fake_send_bot_replies)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/telegram/webhook",
-        json={
-            "update_id": 1,
-            "message": {
-                "message_id": 10,
-                "chat": {"id": 42, "type": "private"},
-                "text": "АТБ 450 еда",
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert sent["bot_token"] == "token-123"
-    assert sent["family_id_value"] == "family-123"
-    assert sent["account_id_value"] == "account-123"
-    assert sent["text"] == "АТБ 450 еда"
-    assert sent["replies"] == [BotReply(chat_id=42, text="Manual created")]
+    assert sent == [BotReply(chat_id=42, text=expected)]
+    assert all("Доходы:" not in reply.text for reply in sent)

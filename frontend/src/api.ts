@@ -7,6 +7,19 @@ export type CurrentUser = {
   family_name: string;
 };
 
+export type TelegramLinkStatus = {
+  is_linked: boolean;
+  username: string | null;
+  first_name: string | null;
+  linked_at: string | null;
+};
+
+export type TelegramLinkToken = {
+  token: string;
+  expires_at: string;
+  telegram_url: string | null;
+};
+
 type AccessTokenResponse = {
   access_token: string;
   token_type: string;
@@ -115,6 +128,29 @@ export async function getCurrentUser(): Promise<CurrentUser> {
     throw new Error(await responseError(response, "Could not load your account."));
   }
   return (await response.json()) as CurrentUser;
+}
+
+export async function getTelegramLinkStatus(): Promise<TelegramLinkStatus> {
+  const response = await authenticatedFetch(apiUrl("/telegram/link-status"));
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not load Telegram link status."));
+  }
+  return (await response.json()) as TelegramLinkStatus;
+}
+
+export async function createTelegramLink(): Promise<TelegramLinkToken> {
+  const response = await authenticatedFetch(apiUrl("/telegram/link-token"), { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not create a Telegram link."));
+  }
+  return (await response.json()) as TelegramLinkToken;
+}
+
+export async function deleteTelegramLink(): Promise<void> {
+  const response = await authenticatedFetch(apiUrl("/telegram/link"), { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not unlink Telegram."));
+  }
 }
 
 async function responseError(response: Response, fallback: string): Promise<string> {
