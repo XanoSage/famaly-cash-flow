@@ -1,8 +1,8 @@
 # Current State: 2026-10-05
 
 This state follows the rebaseline and Web identity work already merged into `staging` at
-`0f7123b5145a9a95db37e8940435a0957b9b66b7`. Telegram identity work is being developed on
-`codex/telegram-identity-linking`; it has not been merged. `main` is unchanged.
+`0f7123b5145a9a95db37e8940435a0957b9b66b7`. Telegram identity work was implemented on
+`codex/telegram-identity-linking` at `2fec64838b408fbbafb10698e11673782104eaf2`. `main` is unchanged.
 
 ## Verified Working Features
 
@@ -43,9 +43,12 @@ This state follows the rebaseline and Web identity work already merged into `sta
 - Never log link tokens, webhook or bot secrets, Telegram message text, bank rows, transaction
   details, or amounts. The raw link token is returned only from the authenticated create endpoint
   and kept in Web component memory.
-- Token locking and conditional consumption are designed for PostgreSQL. SQLite tests cannot prove
-  PostgreSQL row-lock behavior or concurrent consumption.
-- The new migration has only been checked through history and offline SQL generation. Live
+- Consumption selects the token hash with `used_at IS NULL`, an unexpired timestamp, and
+  `FOR UPDATE`, then repeats those conditions in a conditional update and requires `rowcount == 1`.
+  The identity insert and token update commit in the same transaction. SQLite tests prove replay
+  rejection but cannot prove PostgreSQL row locks or concurrent consumption; no live PostgreSQL
+  test ran.
+- The new migration's PostgreSQL upgrade and downgrade SQL have been generated offline. Live
   PostgreSQL migration and constraints remain unverified in this environment.
 - The auth migration refuses ambiguous normalized email duplicates; resolve those rows before
   upgrading a database that contains them.
@@ -102,8 +105,17 @@ a private chat. Use a public HTTPS tunnel for the webhook; see
 
 Commands run for this slice (Windows PowerShell):
 
-- `backend\\.venv\\Scripts\\python.exe -m pytest -q`: **107 passed, 1 warning in 5.73s**. The
+- `backend\\.venv\\Scripts\\python.exe -m pytest -q`: **107 passed, 1 warning in 5.09s**. The
   warning is Starlette's deprecated httpx test-client integration. The API tests use SQLite.
+- Collection comparison: staging at `0f7123b` collected **121** tests; the Telegram branch collected
+  **107**. No test files were deleted; five Telegram test modules were refactored and
+  `test_telegram_identity.py` was added. Per-module collected counts changed as follows: dispatcher
+  13→8, manual 6→6, review 14→3, summary 3→1, webhook 11→5, identity 0→10. That is 45 old node
+  IDs no longer present and 31 new IDs (net −14). The manual parser's two test names remain; the
+  other prior function names were rewritten or consolidated, not mechanically renamed. There were
+  no pytest configuration or shared fixture changes and no parameterized Telegram cases removed;
+  the new unlinked-summary webhook test has private/group cases. Auth tests and their parameterized
+  security cases are unchanged.
 - `backend\\.venv\\Scripts\\ruff.exe check --select E,F,I <25 changed Python files>`:
   **passed**. `ruff.exe format --check <same files>`: **passed, 25 files already formatted**.
 - `backend\\.venv\\Scripts\\python.exe -m pip check`: **No broken requirements found**.
@@ -115,11 +127,12 @@ Commands run for this slice (Windows PowerShell):
   system CA support (`node.exe --use-system-ca ...\\npm-cli.js ci --prefer-offline`): **109 packages
   installed**. npm reported **5 vulnerabilities** (1 low, 1 moderate, 3 high), deprecated Recharts
   2.x, and an esbuild install-script warning. No audit fixes were applied.
-- `npm run build`: **passed** after the final frontend edit (`tsc -b` and Vite; 2,199 modules).
-  Output: **618.32 kB** (178.74 kB gzip), above Vite's 500 kB advisory threshold. One earlier
-  invocation failed once in `vite:build-html` while emitting `index.html` under a relative path
-  escaping the frontend directory. `npm run build -- --debug` and a subsequent plain
-  `npm run build` both passed without a source/config change, so the failure was not reproducible.
+- `npm run build`: **passed** (`tsc -b` and Vite; 2,199 modules). Output: **618.32 kB**
+  (178.74 kB gzip), above Vite's 500 kB advisory threshold. Two other invocations failed in
+  `vite:build-html` while emitting `index.html` under a relative path escaping the frontend
+  directory. `npm run build -- --debug` and repeated plain builds, including an isolated final run,
+  passed without source/config changes. This intermittent Windows/Vite/Rollup failure remains
+  unexplained.
 - Local synthetic SQLite backend started and `GET /api/v1/health` returned **200**. The in-app
   browser rendered the login page, but its tab controls were read-only in this environment, so Web
   login/link UI interaction was not verified. Backend API linking and Telegram flows are covered by

@@ -32,7 +32,10 @@ from app.services.telegram_linking import (
 from app.telegram_bot.accounts import ACCOUNT_NOT_FOUND_TEXT, ACCOUNT_SELECTED_TEXT
 from app.telegram_bot.context import resolve_telegram_context
 from app.telegram_bot.dispatcher import BotReply
-from app.telegram_bot.review import REVIEW_TRANSACTION_NOT_FOUND_TEXT
+from app.telegram_bot.review import (
+    REVIEW_CATEGORY_NOT_FOUND_TEXT,
+    REVIEW_TRANSACTION_NOT_FOUND_TEXT,
+)
 
 
 @pytest.fixture()
@@ -148,6 +151,15 @@ def test_start_token_links_from_numeric_sender_in_private_chat_and_rejects_repla
     assert identity.private_chat_id == 8111
     assert identity.username == "changeable_name"
     assert identity.user_id != identity.telegram_user_id
+    assert (
+        resolve_telegram_context(
+            db_session,
+            telegram_user_id=7002,
+            private_chat_id=8112,
+            profile={"username": "changeable_name"},
+        )
+        is None
+    )
     assert any("связан" in reply.text.lower() for reply in sent)
     assert sent[-1].text != sent[-2].text
 
@@ -354,12 +366,25 @@ def test_telegram_summary_review_and_forged_callbacks_are_family_scoped(
             chat_id=8001,
         ),
     )
+    foreign_category = client.post(
+        "/api/v1/telegram/webhook",
+        json=_callback_update(
+            f"review_category:{transaction_a.id}:{category_b.id}",
+            telegram_user_id=7001,
+            chat_id=8001,
+        ),
+    )
+    db_session.refresh(transaction_a)
     db_session.refresh(transaction_b)
 
     assert done.status_code == category.status_code == 200
-    assert replies[-1].text == REVIEW_TRANSACTION_NOT_FOUND_TEXT
+    assert replies[-3].text == REVIEW_TRANSACTION_NOT_FOUND_TEXT
     assert transaction_b.needs_review is True
     assert transaction_b.category_id is None
+    assert foreign_category.status_code == 200
+    assert replies[-1].text == REVIEW_CATEGORY_NOT_FOUND_TEXT
+    assert transaction_a.needs_review is True
+    assert transaction_a.category_id is None
     assert transaction_a.family_id == family_a.id
 
 
