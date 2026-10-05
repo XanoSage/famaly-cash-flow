@@ -1,8 +1,9 @@
 # Current State: 2026-10-05
 
-This state follows the rebaseline and Web identity work already merged into `staging` at
-`0f7123b5145a9a95db37e8940435a0957b9b66b7`. Telegram identity work was implemented on
-`codex/telegram-identity-linking` at `2fec64838b408fbbafb10698e11673782104eaf2`. `main` is unchanged.
+The current source-of-truth baseline is `staging` at
+`13d87260211b3d2089b0ea7750e295c08f849781`, including Web authentication and Telegram identity/linking.
+The Import Review Engine described below is being developed on `codex/import-review-engine` from
+that baseline and has not been merged. `main` is unchanged.
 
 ## Verified Working Features
 
@@ -10,58 +11,78 @@ This state follows the rebaseline and Web identity work already merged into `sta
   rotating opaque refresh tokens stored as hashes in PostgreSQL. Authenticated APIs derive Family
   from the persisted User.
 - Analytics, categories, transactions, imports, and transaction review are family-scoped.
-- XLSX preview, persisted drafts, confirmation, dashboard analytics, and review/category updates
-  are present. The Web client has login, a dashboard, recent transactions, and review actions.
-- Telegram uses `TelegramIdentity.telegram_user_id` from Telegram's numeric `from.id`. Link tokens
-  are random, expire after 15 minutes, are stored as SHA-256 hashes, and are consumed atomically.
-- Authenticated Web endpoints create a link, report status, and unlink. The Web account section can
-  open/copy a link, display expiry, refresh status on focus, and unlink. TypeScript/Vite production
-  build passed; browser interaction beyond rendering the login screen was unavailable here.
-- Telegram financial commands and callbacks require a linked identity and private chat. Family is
-  derived as `TelegramIdentity -> User -> Family`. `/summary` uses `AnalyticsSummaryService`;
-  review mutations use `TransactionReviewService`.
-- `/account` stores a validated active family account in `UserPreference`. Manual Telegram expense
-  input uses `ManualTransactionService`, Decimal amounts, and aware UTC timestamps.
-- Global Telegram family/account IDs have been removed from runtime configuration and Compose.
+- Telegram identity uses numeric `from.id`; link tokens are random, expire after 15 minutes, are
+  stored as SHA-256 hashes, and are consumed atomically. Financial Telegram commands and callbacks
+  resolve Family through `TelegramIdentity -> User -> Family` and use shared application services.
+- XLSX parsing creates persisted draft previews without persisting Merchant records. Import-review
+  applies normalized system/family categorization rules and duplicate checks before returning the
+  preview.
+- Supported rules are exact normalized merchant, exact normalized bank category, and normalized
+  keyword/description. Higher numeric priority wins per output field. Equal-priority contradictory
+  outputs add `rule_conflict`; equivalent outputs do not. The idempotent system seed currently maps
+  `Супермаркети та продукти` to the system `Еда / Супермаркеты` taxonomy.
+- Existing-transaction duplicate matching is Family-scoped and conservative: exact bank timestamp,
+  signed amount, currency, and normalized non-empty description must match; payment-instrument
+  labels must also match when both are present. Repeated equivalent rows in one upload point to the
+  first row number. Confirmed statements re-upload as duplicate candidates.
+- Authenticated Family-scoped APIs retrieve/filter previews, patch a row, perform bulk actions,
+  optionally apply corrections to matching merchant rows in the current draft, and explicitly save
+  a normalized Family merchant rule. Responses include proposed category/subcategory names and IDs,
+  review decisions, and Family-safe duplicate summaries.
+- Confirmation preserves reviewed category, subcategory, flow, and scope; excludes excluded rows and
+  unaccepted duplicates; allows intentionally uncategorized rows; rejects unresolved parse errors;
+  and rejects a second confirmation of a confirmed batch.
+- A new Alembic migration persists duplicate inclusion, intentional-uncategorized review, review
+  timestamp state, and the recomputed `auto_ready_count` / `needs_review_count` batch counters. The
+  migration chain remains linear with one head.
+- Existing dashboard, transaction review, Web authentication, and Telegram flows remain in place.
 
 ## Incomplete Features
 
-- Manual Telegram income entry, Telegram notifications, and a Mini App are not implemented.
-- Import preview row editing, bulk actions, robust duplicate matching/conflict workflows, and draft
-  cleanup need more work. The categorization rule table exists, but the full rule engine is absent.
-- Budgets, budget limits, and notifications are not implemented.
-- Web has no import UI, router, full transaction-management pages, or frontend test suite.
-- Bank-import timestamps remain naive. New Telegram manual transaction timestamps are assigned in
-  UTC; browser display policy still needs consistent Europe/Kyiv formatting across the product.
-- CI and deployment automation are absent. Login throttling and expired-session cleanup are absent.
+- The Web Import Review UI is not implemented. The next slice is upload → preview table → filters →
+  row editing → bulk actions → confirm against the APIs described in `docs/import-preview-flow.md`.
+- Parse-error source date/amount fields cannot be fixed interactively; users can exclude those rows.
+- Draft cleanup/expiration execution is not implemented even though draft expiry metadata exists.
+- Only a small supermarket system bank-category mapping is seeded; no broad Ukrainian bank taxonomy
+  is intended in this slice.
+- Budgets, budget limits, Telegram income entry, Telegram notifications, and a Mini App are not
+  implemented.
+- The Web client has no full transaction-management pages or frontend test suite. CI and deployment
+  automation are absent.
+- Imported bank timestamps remain naive local wall times. The duplicate matcher deliberately makes
+  no timezone conversion assumption. Telegram manual transaction timestamps are UTC-aware; a
+  consistent imported-bank/display timezone policy remains open.
 
 ## Security Risks and Limits
 
-- Production must set `TELEGRAM_WEBHOOK_SECRET_TOKEN` whenever `TELEGRAM_BOT_TOKEN` is enabled.
-  Webhook secret validation is constant-time when configured; a real production webhook has not
-  been exercised here.
+- New import endpoints derive Family from the authenticated User. Category/subcategory IDs are
+  checked against system/global or caller-Family rows; preview IDs must belong to the target draft.
+  Duplicate metadata is loaded only by transaction ID plus caller Family.
+- Duplicate matching is intentionally exact to limit false positives. It can miss a real duplicate if
+  bank description, local timestamp, or instrument formatting changes. The source XLSX currently has
+  no stable bank transaction ID. No tolerance-based match is used.
+- PostgreSQL `FOR UPDATE` behavior for draft confirmation/edit serialization and migrations were not
+  exercised against a live PostgreSQL server. SQLite tests do not prove PostgreSQL locking behavior.
+- Imported bank timestamps have no offset and remain naive; exact duplicate matching uses their
+  displayed wall timestamp. This is not a timezone policy for analytics or display.
+- Production must set `TELEGRAM_WEBHOOK_SECRET_TOKEN` whenever `TELEGRAM_BOT_TOKEN` is enabled. A
+  real production webhook or Telegram Bot API was not exercised.
 - Never log link tokens, webhook or bot secrets, Telegram message text, bank rows, transaction
-  details, or amounts. The raw link token is returned only from the authenticated create endpoint
-  and kept in Web component memory.
-- Consumption selects the token hash with `used_at IS NULL`, an unexpired timestamp, and
-  `FOR UPDATE`, then repeats those conditions in a conditional update and requires `rowcount == 1`.
-  The identity insert and token update commit in the same transaction. SQLite tests prove replay
-  rejection but cannot prove PostgreSQL row locks or concurrent consumption; no live PostgreSQL
-  test ran.
-- The new migration's PostgreSQL upgrade and downgrade SQL have been generated offline. Live
-  PostgreSQL migration and constraints remain unverified in this environment.
-- The auth migration refuses ambiguous normalized email duplicates; resolve those rows before
-  upgrading a database that contains them.
+  details, amounts, or uploaded statement contents.
+- Login throttling and expired-session cleanup are absent. The auth migration refuses ambiguous
+  normalized email duplicates; resolve those rows before upgrading such a database.
 
 ## Technical Debt
 
 - Backend dependencies have open lower bounds and no Python lock file. `frontend/package-lock.json`
   is checked in.
-- The backend test client emits a Starlette warning because its httpx integration is deprecated.
-- The repository-wide Ruff check has legacy findings; this slice only checks changed files.
-- npm reports existing audit findings; they were not broadly upgraded. Vite's dashboard bundle is
-  above its 500 kB advisory threshold.
-- PostgreSQL/Docker and a real Telegram network test were unavailable locally.
+- The backend test client emits a Starlette deprecation warning for its httpx integration.
+- Repository-wide Ruff findings are not cleaned up by this slice; only changed Python files are
+  checked. npm has existing reported audit findings; no broad upgrades were run.
+- Vite's built dashboard bundle is above its 500 kB advisory threshold. Bundle splitting is outside
+  this slice.
+- Docker, docker-compose, and psql are unavailable on this machine, preventing live PostgreSQL
+  migration/concurrency checks.
 
 ## Local Development Commands
 
@@ -101,48 +122,33 @@ For Telegram, sign in to Web, create a link in the Telegram section, and complet
 a private chat. Use a public HTTPS tunnel for the webhook; see
 [Telegram Local Checklist](telegram-local-checklist.md).
 
-## Verification Results
+## Import Review Verification Results
 
-Commands run for this slice (Windows PowerShell):
+Commands run on Windows PowerShell from `backend` unless noted:
 
-- `backend\\.venv\\Scripts\\python.exe -m pytest -q`: **107 passed, 1 warning in 5.09s**. The
-  warning is Starlette's deprecated httpx test-client integration. The API tests use SQLite.
-- Collection comparison: staging at `0f7123b` collected **121** tests; the Telegram branch collected
-  **107**. No test files were deleted; five Telegram test modules were refactored and
-  `test_telegram_identity.py` was added. Per-module collected counts changed as follows: dispatcher
-  13→8, manual 6→6, review 14→3, summary 3→1, webhook 11→5, identity 0→10. That is 45 old node
-  IDs no longer present and 31 new IDs (net −14). The manual parser's two test names remain; the
-  other prior function names were rewritten or consolidated, not mechanically renamed. There were
-  no pytest configuration or shared fixture changes and no parameterized Telegram cases removed;
-  the new unlinked-summary webhook test has private/group cases. Auth tests and their parameterized
-  security cases are unchanged.
-- `backend\\.venv\\Scripts\\ruff.exe check --select E,F,I <25 changed Python files>`:
-  **passed**. `ruff.exe format --check <same files>`: **passed, 25 files already formatted**.
-- `backend\\.venv\\Scripts\\python.exe -m pip check`: **No broken requirements found**.
-- `python -m alembic history --verbose` and `python -m alembic heads`: **passed**; the chain is
-  linear and `202610050002` is the single head.
-- `python -m alembic upgrade head --sql`: **passed**, generated PostgreSQL SQL for the full chain
-  through `202610050002`. This is offline SQL generation, not a live migration.
-- `npm ci` first failed with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`. Retried successfully with Node's
-  system CA support (`node.exe --use-system-ca ...\\npm-cli.js ci --prefer-offline`): **109 packages
-  installed**. npm reported **5 vulnerabilities** (1 low, 1 moderate, 3 high), deprecated Recharts
-  2.x, and an esbuild install-script warning. No audit fixes were applied.
-- `npm run build`: **passed** (`tsc -b` and Vite; 2,199 modules). Output: **618.32 kB**
-  (178.74 kB gzip), above Vite's 500 kB advisory threshold. Two other invocations failed in
-  `vite:build-html` while emitting `index.html` under a relative path escaping the frontend
-  directory. `npm run build -- --debug` and repeated plain builds, including an isolated final run,
-  passed without source/config changes. This intermittent Windows/Vite/Rollup failure remains
-  unexplained.
-- Local synthetic SQLite backend started and `GET /api/v1/health` returned **200**. The in-app
-  browser rendered the login page, but its tab controls were read-only in this environment, so Web
-  login/link UI interaction was not verified. Backend API linking and Telegram flows are covered by
-  tests.
-- `docker`, `docker-compose`, and `psql` are unavailable on PATH. No live PostgreSQL migration,
-  PostgreSQL concurrency test, or real Telegram Bot API smoke test ran. Bot credentials and a public
-  HTTPS webhook were not configured.
+- `\.venv\Scripts\python.exe -m pytest -q`: **134 passed, 1 warning in 8.79s**. The warning is
+  Starlette's deprecated httpx test-client integration. API tests use SQLite.
+- `\.venv\Scripts\python.exe -m pytest --collect-only -q`: **134 tests collected in 0.87s**.
+- `\.venv\Scripts\python.exe -m pip check`: **No broken requirements found**.
+- `\.venv\Scripts\ruff.exe check --select E,F,I <13 changed Python files>`: **passed**.
+- `\.venv\Scripts\ruff.exe format --check <13 changed Python files>`: **passed; all 13 already
+  formatted**.
+- `git diff --check`: **passed**.
+- `python -m alembic history --verbose`: **passed**, linear through `202610050003`.
+  `python -m alembic heads`: **one head, `202610050003`**.
+- `python -m alembic upgrade head --sql`: **passed**, generated offline PostgreSQL SQL through
+  `202610050003`. `python -m alembic downgrade 202610050003:202610050002 --sql`: **passed**,
+  generated offline downgrade SQL. These are not live migrations.
+- `npm.cmd run build` initially failed in `vite:build-html` because Rollup received an emitted
+  `index.html` path outside the frontend root. `npm.cmd run build -- --debug` then passed, followed
+  by a plain `npm.cmd run build` pass. Both successful builds ran `tsc -b`, transformed 2,199
+  modules, and emitted a **618.32 kB** JS bundle (**178.74 kB gzip**). The 500 kB Vite advisory
+  remains; the intermittent emitted-path failure is unexplained.
+- `Get-Command docker,docker-compose,psql -ErrorAction SilentlyContinue` found none on PATH. No live
+  PostgreSQL migration/concurrency test or real Telegram Bot API smoke test ran.
 
 ## Recommended Next Slice
 
-Finish the import review path: add the missing preview-row editing and bulk-action API/UI, then
-verify duplicate matching and conflict handling against representative bank statements. Keep the
-existing FastAPI/PostgreSQL/SQLAlchemy and React/TypeScript architecture.
+Build the Web Import Review UI against the stable backend contract: XLSX upload, paginated/filterable
+preview, row editing, merchant-wide and selected-row bulk actions, explicit duplicate/uncategorized
+decisions, and confirmation. Keep review business logic in backend services.

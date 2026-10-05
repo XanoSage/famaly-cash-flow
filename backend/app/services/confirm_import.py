@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal
 import re
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -11,6 +11,11 @@ from app.models.account import Account, PaymentInstrument
 from app.models.import_batch import ImportBatch, ImportPreviewRow
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
+from app.services.import_review import (
+    ImportReviewService,
+    ImportReviewValidationError,
+    normalize_review_text,
+)
 
 
 class ConfirmImportError(ValueError):
@@ -37,17 +42,45 @@ class ConfirmImportService:
         if error_rows:
             raise ConfirmImportError("Import preview contains error rows.")
 
+        review_service = ImportReviewService(self.db)
+        importable_rows = [
+            row
+            for row in preview_rows
+            if row.status != "excluded"
+            and (row.status != "duplicate_candidate" or row.duplicate_included)
+        ]
+        for row in importable_rows:
+            try:
+                review_service.validate_category_selection(
+                    family_id=family_id,
+                    category_id=row.proposed_category_id,
+                    subcategory_id=row.proposed_subcategory_id,
+                )
+            except ImportReviewValidationError as exc:
+                raise ConfirmImportError(str(exc)) from exc
         transactions = [
             self._create_transaction(import_batch, account, row, owner_user_id)
-            for row in preview_rows
-            if row.status not in {"excluded", "duplicate_candidate"}
+            for row in importable_rows
         ]
 
         import_batch.status = "confirmed"
+        import_batch.auto_ready_count = sum(row.status == "auto_ready" for row in preview_rows)
+        import_batch.needs_review_count = sum(row.status == "needs_review" for row in preview_rows)
         import_batch.imported_count = len(transactions)
         import_batch.excluded_count = sum(row.status == "excluded" for row in preview_rows)
-        import_batch.duplicate_count = sum(row.status == "duplicate_candidate" for row in preview_rows)
+        import_batch.duplicate_count = sum(
+            review_service.has_duplicate(row) for row in preview_rows
+        )
         import_batch.error_count = len(error_rows)
+        import_batch.uncategorized_count = sum(
+            row.proposed_category_id is None for row in importable_rows
+        )
+        import_batch.work_fop_count = sum(
+            row.proposed_scope == "work_fop" for row in importable_rows
+        )
+        import_batch.savings_count = sum(
+            row.proposed_flow_type == "transfer_to_savings" for row in importable_rows
+        )
 
         self.db.add_all(transactions)
         self.db.commit()
@@ -57,10 +90,12 @@ class ConfirmImportService:
 
     def _get_draft_import_batch(self, family_id: UUID, import_batch_id: UUID) -> ImportBatch:
         import_batch = self.db.scalar(
-            select(ImportBatch).where(
+            select(ImportBatch)
+            .where(
                 ImportBatch.id == import_batch_id,
                 ImportBatch.family_id == family_id,
             )
+            .with_for_update()
         )
         if import_batch is None:
             raise ConfirmImportError("Import preview not found.")
@@ -94,12 +129,16 @@ class ConfirmImportService:
         owner_user_id: UUID | None,
     ) -> Transaction:
         if row.occurred_at is None or row.amount is None:
-            raise ConfirmImportError(f"Preview row {row.row_number} is missing required transaction fields.")
+            raise ConfirmImportError(
+                f"Preview row {row.row_number} is missing required transaction fields."
+            )
 
         flow_type = row.proposed_flow_type or "other"
         direction = _direction_from_amount(row.amount)
         merchant = self._get_or_create_merchant(import_batch.family_id, row.merchant_name)
-        payment_instrument = self._get_or_create_payment_instrument(account.id, row.payment_instrument_label)
+        payment_instrument = self._get_or_create_payment_instrument(
+            account.id, row.payment_instrument_label
+        )
 
         return Transaction(
             family_id=import_batch.family_id,
@@ -124,11 +163,13 @@ class ConfirmImportService:
             category_id=row.proposed_category_id,
             subcategory_id=row.proposed_subcategory_id,
             is_cash=flow_type in {"cash_withdrawal", "cash_expense"},
-            is_duplicate_candidate=row.status == "duplicate_candidate",
+            is_duplicate_candidate=ImportReviewService(self.db).has_duplicate(row),
             needs_review=row.status == "needs_review",
         )
 
-    def _get_or_create_merchant(self, family_id: UUID, merchant_name: str | None) -> Merchant | None:
+    def _get_or_create_merchant(
+        self, family_id: UUID, merchant_name: str | None
+    ) -> Merchant | None:
         normalized_name = _normalize_text(merchant_name)
         if not merchant_name or not normalized_name:
             return None
@@ -191,7 +232,7 @@ def _direction_from_amount(amount: Decimal) -> str:
 def _normalize_text(value: str | None) -> str | None:
     if not value:
         return None
-    return re.sub(r"\s+", " ", value).strip().casefold()
+    return normalize_review_text(value) or None
 
 
 def _extract_last_digits(label: str) -> str | None:

@@ -1,4 +1,6 @@
 from collections.abc import Generator
+from datetime import datetime
+from decimal import Decimal
 from io import BytesIO
 
 import pytest
@@ -12,13 +14,21 @@ from sqlalchemy.pool import StaticPool
 from app import models  # noqa: F401
 from app.auth.dependencies import get_current_user
 from app.db.base import Base
+from app.db.seed_system_categories import seed_system_categories
 from app.db.session import get_db
+from app.importers.bank_xlsx import (
+    BankStatementParseResult,
+    BankStatementSummary,
+    ParsedBankOperation,
+)
 from app.main import app
 from app.models.account import Account
+from app.models.category import Category
 from app.models.family import Family
 from app.models.import_batch import ImportBatch
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.services.import_preview import ImportPreviewService
 
 
 @pytest.fixture()
@@ -31,6 +41,7 @@ def db_session() -> Generator[Session, None, None]:
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     with session_factory() as session:
+        seed_system_categories(session)
         yield session
 
 
@@ -123,7 +134,7 @@ def test_get_import_preview_filters_by_status(client: TestClient, db_session: Se
     assert payload["summary"]["auto_ready_count"] == 1
     assert payload["summary"]["needs_review_count"] == 1
     assert payload["rows"][0]["status"] == "needs_review"
-    assert payload["rows"][0]["reason_codes"] == ["person_transfer"]
+    assert payload["rows"][0]["reason_codes"] == ["person_transfer", "uncategorized"]
 
 
 def test_get_import_preview_uses_authenticated_family_instead_of_query_parameter(
@@ -167,6 +178,154 @@ def test_confirm_import_preview_creates_transactions(
     assert payload["import_batch_id"] == import_batch_id
     assert payload["status"] == "confirmed"
     assert payload["created_transactions"] == 2
+    assert db_session.query(Transaction).count() == 2
+
+
+def test_row_patch_and_bulk_actions_return_reviewed_contract(
+    client: TestClient, db_session: Session
+) -> None:
+    family, user = _create_family_and_user(db_session)
+    category = db_session.scalar(
+        select(Category).where(Category.family_id.is_(None), Category.name == "Дом")
+    )
+    assert category is not None
+    uploaded = _upload_statement_preview(client, family, user)
+    batch_id = uploaded.json()["summary"]["import_batch_id"]
+    row_id = uploaded.json()["rows"][0]["id"]
+
+    patched = client.patch(
+        f"/api/v1/imports/{batch_id}/preview/{row_id}",
+        json={"proposed_category_id": str(category.id), "save_rule": True},
+    )
+    assert patched.status_code == 200
+    row = patched.json()["rows"][0]
+    assert row["proposed_category_id"] == str(category.id)
+    assert row["proposed_category_name"] == "Дом"
+    assert row["status"] == "auto_ready"
+    assert patched.json()["summary"]["uncategorized_count"] == 1
+
+    bulk = client.post(
+        f"/api/v1/imports/{batch_id}/bulk-actions",
+        json={"action": "exclude", "row_ids": [row_id]},
+    )
+    assert bulk.status_code == 200
+    assert bulk.json()["rows"][0]["status"] == "excluded"
+    assert bulk.json()["summary"]["excluded_count"] == 1
+
+
+def test_import_review_endpoints_reject_foreign_families_and_entities(
+    client: TestClient, db_session: Session
+) -> None:
+    family_a, user_a = _create_family_and_user(db_session)
+    family_b = Family(name="Other Family")
+    user_b = User(
+        family=family_b,
+        email="other@example.com",
+        password_hash="hash",
+        display_name="Other",
+    )
+    foreign_category = Category(family=family_b, name="Private category", is_system=False)
+    db_session.add_all([family_b, user_b, foreign_category])
+    db_session.commit()
+    app.dependency_overrides[get_current_user] = lambda: user_a
+
+    own_preview = _upload_statement_preview(client, family_a, user_a).json()
+    own_batch_id = own_preview["summary"]["import_batch_id"]
+    own_row_id = own_preview["rows"][0]["id"]
+    foreign_batch = _create_foreign_preview(db_session, family_b, user_b)
+    foreign_row = db_session.scalar(select(ImportBatch).where(ImportBatch.id == foreign_batch.id))
+    assert foreign_row is not None
+    foreign_row_id = foreign_row.preview_rows[0].id
+
+    fetch = client.get(f"/api/v1/imports/{foreign_batch.id}/preview")
+    assert fetch.status_code == 404
+    patch_foreign_row = client.patch(
+        f"/api/v1/imports/{own_batch_id}/preview/{foreign_row_id}",
+        json={"excluded": True},
+    )
+    assert patch_foreign_row.status_code == 400
+    bulk_foreign_row = client.post(
+        f"/api/v1/imports/{own_batch_id}/bulk-actions",
+        json={"action": "exclude", "row_ids": [str(foreign_row_id)]},
+    )
+    assert bulk_foreign_row.status_code == 400
+    foreign_category = client.patch(
+        f"/api/v1/imports/{own_batch_id}/preview/{own_row_id}",
+        json={"proposed_category_id": str(foreign_category.id)},
+    )
+    assert foreign_category.status_code == 400
+
+
+def test_duplicate_matching_and_metadata_are_family_scoped(
+    client: TestClient, db_session: Session
+) -> None:
+    family_a, user_a = _create_family_and_user(db_session)
+    family_b = Family(name="Transaction Family")
+    user_b = User(
+        family=family_b,
+        email="transaction-family@example.com",
+        password_hash="hash",
+        display_name="Other",
+    )
+    account_b = Account(
+        family=family_b,
+        owner_user=user_b,
+        type="card",
+        name="Foreign account",
+        currency="UAH",
+    )
+    foreign_transaction = Transaction(
+        family=family_b,
+        account=account_b,
+        occurred_at=datetime(2026, 5, 8, 15, 25),
+        amount=Decimal("-118.02"),
+        currency="UAH",
+        direction="expense",
+        flow_type="purchase",
+        scope="family",
+        description_raw="Сільпо",
+        description_normalized="сільпо",
+    )
+    db_session.add_all([family_b, user_b, account_b, foreign_transaction])
+    db_session.commit()
+    app.dependency_overrides[get_current_user] = lambda: user_a
+
+    response = _upload_statement_preview(client, family_a, user_a)
+
+    assert response.status_code == 201
+    row = response.json()["rows"][0]
+    assert row["status"] == "auto_ready"
+    assert row["duplicate_transaction_id"] is None
+    assert row["matched_duplicate"] is None
+
+
+def test_reupload_after_confirmation_is_duplicate_and_not_imported_twice(
+    client: TestClient, db_session: Session
+) -> None:
+    family, user = _create_family_and_user(db_session)
+    account = _create_account(db_session, family, user)
+    first_upload = _upload_statement_preview(client, family, user)
+    batch_id = first_upload.json()["summary"]["import_batch_id"]
+    first_confirm = client.post(
+        f"/api/v1/imports/{batch_id}/confirm",
+        params={"account_id": str(account.id)},
+    )
+    assert first_confirm.status_code == 200
+    assert first_confirm.json()["created_transactions"] == 2
+
+    second_upload = _upload_statement_preview(client, family, user)
+    second_batch_id = second_upload.json()["summary"]["import_batch_id"]
+    duplicate_rows = second_upload.json()["rows"]
+    assert all(row["status"] == "duplicate_candidate" for row in duplicate_rows)
+    assert all(row["duplicate_transaction_id"] for row in duplicate_rows)
+    assert all(row["matched_duplicate"] for row in duplicate_rows)
+
+    second_confirm = client.post(
+        f"/api/v1/imports/{second_batch_id}/confirm",
+        params={"account_id": str(account.id)},
+    )
+    assert second_confirm.status_code == 200
+    assert second_confirm.json()["created_transactions"] == 0
     assert db_session.query(Transaction).count() == 2
 
 
@@ -316,3 +475,52 @@ def _make_statement_xlsx() -> bytes:
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def _create_foreign_preview(db_session: Session, family: Family, user: User) -> ImportBatch:
+    row = ParsedBankOperation(
+        row_number=3,
+        status="auto_ready",
+        reason_codes=[],
+        occurred_at=datetime(2026, 5, 8, 15, 25),
+        amount=Decimal("-118.02"),
+        currency="UAH",
+        transaction_amount=Decimal("118.02"),
+        transaction_currency="UAH",
+        balance_after=Decimal("1000.00"),
+        payment_instrument_label="4627 **** **** 3421",
+        bank_category_raw="Супермаркети та продукти",
+        description_raw="Сільпо",
+        merchant_name="Сільпо",
+        proposed_flow_type="purchase",
+        proposed_scope="family",
+        confidence=Decimal("0.9000"),
+        error_message=None,
+        normalized_payload={"direction": "expense"},
+    )
+    summary = BankStatementSummary(
+        period_start=None,
+        period_end=None,
+        total_rows=1,
+        auto_ready_count=1,
+        needs_review_count=0,
+        imported_count=1,
+        excluded_count=0,
+        duplicate_count=0,
+        error_count=0,
+        uncategorized_count=0,
+        work_fop_count=0,
+        savings_count=0,
+        parser_version="test-parser",
+        mapping_version="test-mapping",
+    )
+    return ImportPreviewService(db_session).create_from_parsed_statement(
+        family_id=family.id,
+        uploaded_by_user_id=user.id,
+        parsed_statement=BankStatementParseResult(
+            source_filename="foreign.xlsx",
+            sheet_name="Виписки",
+            summary=summary,
+            rows=[row],
+        ),
+    )

@@ -32,6 +32,17 @@
 
 В preview возможные дубли показываются и по умолчанию не импортируются.
 
+The implemented conservative fallback compares an active Transaction from the same Family using
+the exact bank timestamp, signed amount, currency, and normalized non-empty description. If both
+records have a payment-instrument label, the labels must also match. Date/amount similarity alone
+does not qualify. Imported bank timestamps currently remain naive local wall times; matching does
+not infer a timezone. A later bank-provided transaction ID can be added as a stronger key.
+
+Within one uploaded statement, later rows with exactly equal timestamp, signed amount, currency,
+normalized description/merchant, and payment-instrument label are marked as duplicates of the first
+row. The API returns the first row number; it does not create preview-row foreign-key cycles. A
+re-upload after confirmation is matched against the already-created same-Family Transactions.
+
 ## Категоризация на preview
 
 Сервис предлагает категорию на основании:
@@ -40,6 +51,16 @@
 - правила продавец -> категория;
 - пользовательских правил;
 - будущей AI-классификации.
+
+The parser only extracts facts and its initial flow/scope hints. The import-review service applies
+persisted family/system categorization rules and computes final status/reason codes before the draft
+is returned. No Merchant is persisted until confirmation.
+
+### Current review API behavior
+
+The XLSX parser continues to keep bank timestamps naive because the source file has no timezone
+offset. Confirmed transactions use the parsed wall time. Setting a consistent timezone for imported
+bank operations is still a separate product decision; Telegram manual transactions are UTC-aware.
 
 ## Что нужно выяснить после получения реальной выписки
 

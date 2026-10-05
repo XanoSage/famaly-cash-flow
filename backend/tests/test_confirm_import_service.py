@@ -8,7 +8,12 @@ from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
 from app.db.base import Base
-from app.importers.bank_xlsx import BankStatementParseResult, BankStatementSummary, ParsedBankOperation
+from app.db.seed_system_categories import seed_system_categories
+from app.importers.bank_xlsx import (
+    BankStatementParseResult,
+    BankStatementSummary,
+    ParsedBankOperation,
+)
 from app.models.account import Account, PaymentInstrument
 from app.models.family import Family
 from app.models.merchant import Merchant
@@ -34,6 +39,7 @@ def db_session() -> Session:
 def test_confirm_import_creates_transactions_merchants_and_payment_instruments(
     db_session: Session,
 ) -> None:
+    seed_system_categories(db_session)
     family, user, account = _create_family_user_and_account(db_session)
     import_batch = ImportPreviewService(db_session).create_from_parsed_statement(
         family_id=family.id,
