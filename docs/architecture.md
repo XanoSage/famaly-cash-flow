@@ -14,6 +14,33 @@ README.md
 
 ## Backend
 
+Authenticated Web requests follow this path:
+
+```text
+Web user
+  -> authenticated FastAPI request
+  -> persisted current User
+  -> User.family
+  -> shared application/domain services
+  -> PostgreSQL
+```
+
+Family scope is derived from the persisted current user. User-facing routes do not accept a
+client-selected family ID as an authorization input.
+
+Telegram identity linking is the next implementation slice. Once linked, its intended path is:
+
+```text
+Telegram user
+  -> TelegramIdentity
+  -> application User
+  -> User.family
+  -> the same shared application/domain services
+  -> PostgreSQL
+```
+
+Telegram identity mapping and secure linking are not implemented in this branch.
+
 Стек MVP:
 
 - Python;

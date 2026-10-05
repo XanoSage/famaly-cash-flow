@@ -2,60 +2,58 @@
 
 FastAPI backend for Family Cash Flow.
 
-## Local Commands
+## Local setup and demo login
 
-Install dependencies from the repository root:
+From the repository root, copy `.env.example` to `.env` and set `DEMO_USER_EMAIL` and
+`DEMO_USER_PASSWORD` to local-only values. Keep the file out of Git. Copy the same file to
+`backend/.env` when running the backend directly because settings are loaded from the backend
+working directory.
 
-```bash
-cd backend
-python -m pip install -e ".[dev]"
-```
+Start PostgreSQL from the repository root:
 
-Run the API:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-Start PostgreSQL:
-
-```bash
+```powershell
 docker compose up -d postgres
 ```
 
-## Demo Dashboard Data
+Install backend dependencies and create the demo family/user:
 
-After migrations, create or refresh demo data for the frontend dashboard:
-
-```bash
+```powershell
+Set-Location backend
+python -m pip install -e ".[dev]"
+python -m alembic upgrade head
+python -m app.db.seed_system_categories
 python -m app.db.seed_demo_dashboard
 ```
 
-The command prints a `family_id`. Paste it into the frontend dashboard filter.
+The seed command uses the configured demo email/password, stores an Argon2 password hash, and
+creates the demo family, account, and dashboard transactions. It prints family/account IDs and the
+transaction count, never the password.
 
-Local PostgreSQL is exposed on port `5433` to avoid conflicts with a PostgreSQL instance installed on Windows.
+Start the API in that terminal:
 
-Run tests:
-
-```bash
-pytest
+```powershell
+python -m uvicorn app.main:app --reload
 ```
 
-Apply migrations:
+In another terminal, install and start the frontend:
 
-```bash
-alembic upgrade head
+```powershell
+Set-Location frontend
+npm ci
+npm run dev -- --host localhost
 ```
 
-Seed system categories:
+Open `http://localhost:5173/` and sign in with `DEMO_USER_EMAIL` and `DEMO_USER_PASSWORD` from the
+local `.env`. Use `localhost` for both frontend and API so the local refresh cookie stays same-site.
 
-```bash
-python -m app.db.seed_system_categories
+## Other commands
+
+Run backend tests:
+
+```powershell
+Set-Location backend
+python -m pytest
 ```
 
-Health endpoint:
-
-```text
-GET /api/v1/health
-```
-
+The API health check is `GET /api/v1/health`. Local PostgreSQL is exposed on port `5433`.
+Compose does not automatically apply migrations or seed demo data; use the commands above.

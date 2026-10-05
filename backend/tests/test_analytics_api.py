@@ -3,12 +3,14 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from auth_helpers import current_test_user_dependency
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
+from app.auth.dependencies import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -37,6 +39,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = current_test_user_dependency(db_session)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

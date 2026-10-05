@@ -3,11 +3,20 @@
 ## MVP Auth
 
 - Email/password.
-- Хеширование паролей.
-- Access token.
-- Refresh token.
-- Logout.
-- Доступ только для семейных аккаунтов.
+- Email is trimmed/lowercased and globally unique while each user belongs to one family.
+- Passwords use Argon2; plaintext passwords are never stored.
+- Short-lived HS256 access JWT; `sub` is the application user UUID and no family claim is trusted.
+- Refresh tokens are random opaque values. PostgreSQL stores only their SHA-256 hashes in
+  `auth_sessions`; refresh rotates the hash and revocation/rotation prevents reuse.
+- Refresh token is an HttpOnly cookie. Local development uses `SameSite=Lax` and HTTP; production
+  requires a non-placeholder JWT secret and Secure cookies.
+- Authenticated APIs load the persisted user and derive the family from `User.family_id`.
+- Cross-family entity IDs are rejected by backend route/service checks.
+
+Production frontend/API deployments should use the same site under a custom domain. If they must be
+cross-site, configure `AUTH_COOKIE_SAMESITE=none`, `AUTH_COOKIE_SECURE=true`, HTTPS, and credentialed
+CORS for the exact frontend origin. Browsers may block third-party cookies, so same-site hosting is
+the supported deployment shape.
 
 ## Хранение данных
 
@@ -36,3 +45,4 @@
 - Production secrets должны храниться в Secret Manager или аналогичном сервисе.
 - Логи не должны содержать полные банковские выписки или пароли.
 - Логи импорта не должны содержать полный список операций.
+- JWTs, refresh tokens, password hashes, and financial payloads must not be logged.

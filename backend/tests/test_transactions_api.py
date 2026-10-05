@@ -3,12 +3,14 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from auth_helpers import current_test_user_dependency
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
+from app.auth.dependencies import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -39,6 +41,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = current_test_user_dependency(db_session)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -158,7 +161,7 @@ def test_update_transaction_clears_review_flag(
     assert transaction.comment == "Checked"
 
 
-def test_update_transaction_requires_matching_family(
+def test_update_transaction_ignores_client_family_id_and_uses_authenticated_family(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -170,7 +173,8 @@ def test_update_transaction_requires_matching_family(
         json={"needs_review": False},
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["id"] == str(transaction.id)
 
 
 def _seed_transactions(db_session: Session) -> tuple[Family, Account, Transaction, Merchant]:

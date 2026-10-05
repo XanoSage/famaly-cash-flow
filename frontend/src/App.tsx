@@ -16,6 +16,16 @@ import type { LucideIcon } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  apiUrl,
+  authenticatedFetch,
+  clearAccessToken,
+  getCurrentUser,
+  refreshAccessToken,
+  signIn,
+  signOut,
+  type CurrentUser,
+} from "./api";
+import {
   Area,
   AreaChart,
   CartesianGrid,
@@ -149,14 +159,18 @@ type TransactionsState =
   | { status: "success"; data: TransactionList; error: null }
   | { status: "error"; data: TransactionList | null; error: string };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const copy = {
   ru: {
     title: "Семейный финансовый dashboard",
     subtitle: "Первый рабочий экран с реальными backend endpoints.",
-    familyId: "Family ID",
+    signIn: "Войти",
+    signOut: "Выйти",
+    email: "Email",
+    password: "Пароль",
+    loginTitle: "Вход в Family Cash Flow",
+    loginHelp: "Введите email и пароль пользователя вашей семьи.",
+    loginError: "Не удалось войти. Проверьте email и пароль.",
+    account: "Семья",
     from: "С даты",
     to: "По дату",
     scope: "Слой",
@@ -165,12 +179,10 @@ const copy = {
     workScope: "ФОП",
     refresh: "Обновить",
     loading: "Загружаю аналитику...",
-    emptyTitle: "Введите Family ID",
-    emptyText: "После импорта выписки сюда можно вставить id семьи и увидеть dashboard.",
-    savedFamilyIdHint: "Family ID сохраняется в этом браузере и загрузится автоматически при следующем открытии.",
+    emptyTitle: "Пока нет данных",
+    emptyText: "После импорта выписки здесь появится семейная аналитика.",
     errorTitle: "Не удалось загрузить dashboard",
     apiHint: "Проверь, что backend запущен и VITE_API_BASE_URL указывает на API.",
-    invalidFamilyId: "Family ID должен быть UUID в формате 00000000-0000-0000-0000-000000000000.",
     networkError: "Не удалось достучаться до backend. Проверь, что FastAPI запущен на 8000 порту.",
     notFoundError: "Для этого Family ID данные не найдены. Проверь id или заново запусти demo seed.",
     serverError: "Backend ответил ошибкой. Проверь, что PostgreSQL запущен и миграции применены.",
@@ -207,7 +219,14 @@ const copy = {
   uk: {
     title: "Сімейний фінансовий dashboard",
     subtitle: "Перший робочий екран з реальними backend endpoints.",
-    familyId: "Family ID",
+    signIn: "Увійти",
+    signOut: "Вийти",
+    email: "Email",
+    password: "Пароль",
+    loginTitle: "Вхід у Family Cash Flow",
+    loginHelp: "Введіть email і пароль користувача вашої родини.",
+    loginError: "Не вдалося увійти. Перевірте email і пароль.",
+    account: "Родина",
     from: "З дати",
     to: "До дати",
     scope: "Шар",
@@ -216,12 +235,10 @@ const copy = {
     workScope: "ФОП",
     refresh: "Оновити",
     loading: "Завантажую аналітику...",
-    emptyTitle: "Введіть Family ID",
-    emptyText: "Після імпорту виписки сюди можна вставити id сім'ї та побачити dashboard.",
-    savedFamilyIdHint: "Family ID зберігається у цьому браузері та завантажиться автоматично при наступному відкритті.",
+    emptyTitle: "Поки немає даних",
+    emptyText: "Після імпорту виписки тут з'явиться сімейна аналітика.",
     errorTitle: "Не вдалося завантажити dashboard",
     apiHint: "Перевір, що backend запущений і VITE_API_BASE_URL вказує на API.",
-    invalidFamilyId: "Family ID має бути UUID у форматі 00000000-0000-0000-0000-000000000000.",
     networkError: "Не вдалося підключитися до backend. Перевір, що FastAPI запущений на 8000 порту.",
     notFoundError: "Для цього Family ID дані не знайдені. Перевір id або заново запусти demo seed.",
     serverError: "Backend відповів помилкою. Перевір, що PostgreSQL запущений і міграції застосовані.",
@@ -259,7 +276,12 @@ const copy = {
 
 export function App() {
   const [locale, setLocale] = useState<Locale>(() => readStoredValue("locale", "ru") as Locale);
-  const [familyId, setFamilyId] = useState(() => readStoredValue("familyId", ""));
+  const [authStatus, setAuthStatus] = useState<"loading" | "unauthenticated" | "authenticated">("loading");
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginPending, setLoginPending] = useState(false);
   const [occurredFrom, setOccurredFrom] = useState("");
   const [occurredTo, setOccurredTo] = useState("");
   const [scope, setScope] = useState<ScopeFilter>("family");
@@ -287,67 +309,67 @@ export function App() {
   );
 
   useEffect(() => {
-    localStorage.setItem("familyId", familyId);
-  }, [familyId]);
-
-  useEffect(() => {
     localStorage.setItem("locale", locale);
   }, [locale]);
 
   useEffect(() => {
-    if (!hasAutoLoadedRef.current && familyId.trim()) {
-      hasAutoLoadedRef.current = true;
-      void loadDashboard();
-    }
+    localStorage.removeItem("familyId");
+    let cancelled = false;
+    void (async () => {
+      const accessToken = await refreshAccessToken();
+      if (!accessToken) {
+        if (!cancelled) setAuthStatus("unauthenticated");
+        return;
+      }
+      try {
+        const user = await getCurrentUser();
+        if (!cancelled) {
+          setCurrentUser(user);
+          setLocale(user.language);
+          setAuthStatus("authenticated");
+        }
+      } catch {
+        clearAccessToken();
+        if (!cancelled) setAuthStatus("unauthenticated");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    const normalizedFamilyId = familyId.trim();
-    if (state.data && UUID_PATTERN.test(normalizedFamilyId)) {
-      void loadTransactions(normalizedFamilyId, reviewOnly);
+    if (state.data && authStatus === "authenticated") {
+      void loadTransactions(reviewOnly);
     }
-  }, [reviewOnly]);
+  }, [reviewOnly, authStatus]);
+
+  useEffect(() => {
+    if (authStatus === "authenticated" && !hasAutoLoadedRef.current) {
+      hasAutoLoadedRef.current = true;
+      void loadDashboard();
+    }
+  }, [authStatus]);
 
   async function loadDashboard() {
-    const normalizedFamilyId = familyId.trim();
-    if (!normalizedFamilyId) {
-      setState({ status: "idle", data: null, error: null });
-      setTransactionsState({ status: "idle", data: null, error: null });
-      setCategories([]);
-      setCategoriesError(null);
-      return;
-    }
-    if (!UUID_PATTERN.test(normalizedFamilyId)) {
-      setState((current) => ({
-        status: "error",
-        data: current.data,
-        error: t.invalidFamilyId,
-      }));
-      setTransactionsState((current) => ({
-        status: "error",
-        data: current.data,
-        error: t.invalidFamilyId,
-      }));
-      return;
-    }
-
     setState((current) => ({ status: "loading", data: current.data, error: null }));
     setTransactionsState((current) => ({ status: "loading", data: current.data, error: null }));
-    await loadCategories(normalizedFamilyId);
+    await loadCategories();
     try {
-      const url = buildFilteredUrl(`${API_BASE_URL}/analytics/dashboard`, normalizedFamilyId, {
+      const url = buildFilteredUrl(apiUrl("/analytics/dashboard"), {
         occurredFrom,
         occurredTo,
         scope,
       });
 
-      const response = await fetch(url);
+      const response = await authenticatedFetch(url);
       if (!response.ok) {
         throw new Error(dashboardErrorMessage(response.status, t));
       }
       const data = (await response.json()) as Dashboard;
       setState({ status: "success", data, error: null });
     } catch (error) {
+      handleAuthenticationFailure(error);
       setState((current) => ({
         status: "error",
         data: current.data,
@@ -355,30 +377,29 @@ export function App() {
       }));
     }
 
-    await loadTransactions(normalizedFamilyId, reviewOnly);
+    await loadTransactions(reviewOnly);
   }
 
-  async function loadCategories(normalizedFamilyId: string) {
+  async function loadCategories() {
     setCategoriesError(null);
     try {
-      const url = new URL(`${API_BASE_URL}/categories`);
-      url.searchParams.set("family_id", normalizedFamilyId);
-      const response = await fetch(url);
+      const response = await authenticatedFetch(apiUrl("/categories"));
       if (!response.ok) {
         throw new Error(dashboardErrorMessage(response.status, t));
       }
       const data = (await response.json()) as CategoryList;
       setCategories(data.rows);
     } catch (error) {
+      handleAuthenticationFailure(error);
       setCategories([]);
       setCategoriesError(error instanceof TypeError ? t.networkError : errorMessage(error, t.categoryLoadError));
     }
   }
 
-  async function loadTransactions(normalizedFamilyId: string, onlyReview: boolean) {
+  async function loadTransactions(onlyReview: boolean) {
     setTransactionsState((current) => ({ status: "loading", data: current.data, error: null }));
     try {
-      const url = buildFilteredUrl(`${API_BASE_URL}/transactions`, normalizedFamilyId, {
+      const url = buildFilteredUrl(apiUrl("/transactions"), {
         occurredFrom,
         occurredTo,
         scope,
@@ -388,13 +409,14 @@ export function App() {
         url.searchParams.set("needs_review", "true");
       }
 
-      const response = await fetch(url);
+      const response = await authenticatedFetch(url);
       if (!response.ok) {
         throw new Error(dashboardErrorMessage(response.status, t));
       }
       const data = (await response.json()) as TransactionList;
       setTransactionsState({ status: "success", data, error: null });
     } catch (error) {
+      handleAuthenticationFailure(error);
       setTransactionsState((current) => ({
         status: "error",
         data: current.data,
@@ -423,21 +445,9 @@ export function App() {
     transactionId: string,
     payload: { category_id?: string; needs_review?: boolean },
   ) {
-    const normalizedFamilyId = familyId.trim();
-    if (!UUID_PATTERN.test(normalizedFamilyId)) {
-      setTransactionsState((current) => ({
-        status: "error",
-        data: current.data,
-        error: t.invalidFamilyId,
-      }));
-      return;
-    }
-
     setUpdatingTransactionId(transactionId);
     try {
-      const url = new URL(`${API_BASE_URL}/transactions/${transactionId}`);
-      url.searchParams.set("family_id", normalizedFamilyId);
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(apiUrl(`/transactions/${transactionId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -447,6 +457,7 @@ export function App() {
       }
       await loadDashboard();
     } catch (error) {
+      handleAuthenticationFailure(error);
       setTransactionsState((current) => ({
         status: "error",
         data: current.data,
@@ -457,8 +468,105 @@ export function App() {
     }
   }
 
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoginPending(true);
+    setLoginError(null);
+    try {
+      await signIn(loginEmail, loginPassword);
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+      setLocale(user.language);
+      setLoginPassword("");
+      hasAutoLoadedRef.current = false;
+      setAuthStatus("authenticated");
+    } catch (error) {
+      clearAccessToken();
+      setLoginError(error instanceof TypeError ? t.networkError : errorMessage(error, t.loginError));
+    } finally {
+      setLoginPending(false);
+    }
+  }
+
+  async function handleLogout() {
+    await signOut();
+    hasAutoLoadedRef.current = false;
+    setCurrentUser(null);
+    setState({ status: "idle", data: null, error: null });
+    setTransactionsState({ status: "idle", data: null, error: null });
+    setCategories([]);
+    setAuthStatus("unauthenticated");
+  }
+
+  function handleAuthenticationFailure(error: unknown) {
+    if (error instanceof Error && error.name === "AuthenticationRequiredError") {
+      clearAccessToken();
+      setCurrentUser(null);
+      setAuthStatus("unauthenticated");
+    }
+  }
+
   const dashboard = state.data;
   const chartRows = useMemo(() => toChartRows(dashboard?.timeline.rows ?? []), [dashboard]);
+
+  if (authStatus === "loading") {
+    return (
+      <main className="app-shell">
+        <section className="empty-state">
+          <RefreshCw className="spin" />
+          <h2>{t.loading}</h2>
+        </section>
+      </main>
+    );
+  }
+
+  if (authStatus === "unauthenticated") {
+    return (
+      <main className="app-shell auth-shell">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Family Cash Flow</p>
+            <h1>{t.loginTitle}</h1>
+            <p className="subtitle">{t.loginHelp}</p>
+          </div>
+          <label className="language-control">
+            <span>{t.language}</span>
+            <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+              <option value="ru">RU</option>
+              <option value="uk">UA</option>
+            </select>
+          </label>
+        </header>
+        <form className="login-form" onSubmit={handleLogin}>
+          <label className="field">
+            <span>{t.email}</span>
+            <input
+              autoComplete="username"
+              required
+              type="email"
+              value={loginEmail}
+              onChange={(event) => setLoginEmail(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>{t.password}</span>
+            <input
+              autoComplete="current-password"
+              required
+              type="password"
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.target.value)}
+            />
+          </label>
+          {loginError && <p className="table-error">{loginError}</p>}
+          <button className="primary-button" disabled={loginPending} type="submit">
+            {loginPending ? <RefreshCw className="spin" /> : null}
+            <span>{loginPending ? t.loading : t.signIn}</span>
+          </button>
+        </form>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -466,27 +574,23 @@ export function App() {
         <div>
           <p className="eyebrow">Family Cash Flow</p>
           <h1>{t.title}</h1>
-          <p className="subtitle">{t.subtitle}</p>
+          <p className="subtitle">{t.account}: {currentUser?.family_name} · {currentUser?.display_name}</p>
         </div>
-        <label className="language-control">
-          <span>{t.language}</span>
-          <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
-            <option value="ru">RU</option>
-            <option value="uk">UA</option>
-          </select>
-        </label>
+        <div className="account-controls">
+          <label className="language-control">
+            <span>{t.language}</span>
+            <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+              <option value="ru">RU</option>
+              <option value="uk">UA</option>
+            </select>
+          </label>
+          <button className="secondary-button" onClick={() => void handleLogout()} type="button">
+            {t.signOut}
+          </button>
+        </div>
       </header>
 
       <form className="filters" onSubmit={handleSubmit}>
-        <label className="field field-wide">
-          <span>{t.familyId}</span>
-          <input
-            value={familyId}
-            onChange={(event) => setFamilyId(event.target.value)}
-            placeholder="00000000-0000-0000-0000-000000000000"
-          />
-          <small>{t.savedFamilyIdHint}</small>
-        </label>
         <label className="field">
           <span>{t.from}</span>
           <input
@@ -872,12 +976,10 @@ function toChartRows(rows: TimelineRow[]) {
 }
 
 function buildFilteredUrl(
-  href: string,
-  familyId: string,
+  href: string | URL,
   filters: { occurredFrom: string; occurredTo: string; scope: ScopeFilter },
 ) {
   const url = new URL(href);
-  url.searchParams.set("family_id", familyId);
   if (filters.occurredFrom) {
     url.searchParams.set("occurred_from", `${filters.occurredFrom}T00:00:00`);
   }

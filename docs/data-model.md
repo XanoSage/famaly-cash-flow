@@ -20,10 +20,26 @@
 
 - `id`
 - `family_id`
-- `email`
-- `password_hash`
+- `email` - trimmed and lowercased; globally unique for the one-family-per-user MVP
+- `password_hash` - Argon2 encoded hash
 - `display_name`
+- `is_active`
 - `created_at`
+
+## AuthSession
+
+Persistent refresh session for one application user.
+
+Fields:
+
+- `id`
+- `user_id`
+- `refresh_token_hash` - SHA-256 of a random opaque refresh token; the raw token is only sent in an
+  HttpOnly cookie
+- `expires_at`
+- `revoked_at`
+- `created_at`
+- `updated_at`
 
 ## Account
 

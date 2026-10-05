@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from collections import Counter
-from pathlib import Path
 import shutil
 import tempfile
+from collections import Counter
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.authorization import require_family_account
+from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.importers.bank_xlsx import BankXlsxParseError
 from app.models.import_batch import ImportBatch, ImportPreviewRow
+from app.models.user import User
 from app.schemas.imports import (
     ConfirmImportResponse,
     ImportPreviewResponse,
@@ -31,8 +34,7 @@ router = APIRouter(prefix="/imports")
     status_code=status.HTTP_201_CREATED,
 )
 def create_import_preview(
-    family_id: UUID = Query(...),
-    uploaded_by_user_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     preview_limit: int = Query(50, ge=1, le=200),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -41,8 +43,8 @@ def create_import_preview(
     temp_path = _save_upload_to_temp_file(file)
     try:
         import_batch = ImportPreviewService(db).create_from_xlsx(
-            family_id=family_id,
-            uploaded_by_user_id=uploaded_by_user_id,
+            family_id=current_user.family_id,
+            uploaded_by_user_id=current_user.id,
             path=temp_path,
             source_filename=file.filename,
         )
@@ -71,7 +73,7 @@ def create_import_preview(
 )
 def get_import_preview(
     import_batch_id: UUID,
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     row_status: str | None = Query(None),
@@ -80,11 +82,13 @@ def get_import_preview(
     import_batch = db.scalar(
         select(ImportBatch).where(
             ImportBatch.id == import_batch_id,
-            ImportBatch.family_id == family_id,
+            ImportBatch.family_id == current_user.family_id,
         )
     )
     if import_batch is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import preview not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Import preview not found."
+        )
 
     rows_query = select(ImportPreviewRow).where(ImportPreviewRow.import_batch_id == import_batch.id)
     if row_status is not None:
@@ -106,17 +110,25 @@ def get_import_preview(
 )
 def confirm_import_preview(
     import_batch_id: UUID,
-    family_id: UUID = Query(...),
     account_id: UUID = Query(...),
-    owner_user_id: UUID | None = Query(None),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ConfirmImportResponse:
+    import_batch = db.scalar(
+        select(ImportBatch).where(
+            ImportBatch.id == import_batch_id,
+            ImportBatch.family_id == current_user.family_id,
+        )
+    )
+    if import_batch is None:
+        raise HTTPException(status_code=404, detail="Import preview not found.")
+    require_family_account(db, current_user.family_id, account_id)
     try:
         transactions = ConfirmImportService(db).confirm(
-            family_id=family_id,
+            family_id=current_user.family_id,
             import_batch_id=import_batch_id,
             account_id=account_id,
-            owner_user_id=owner_user_id,
+            owner_user_id=current_user.id,
         )
     except ConfirmImportError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

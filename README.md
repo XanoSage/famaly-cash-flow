@@ -6,6 +6,8 @@
 
 ## Документация
 
+- [Backend local setup and demo login](backend/README.md)
+- [Frontend local setup](frontend/README.md)
 - [Current Implementation State (2026-10)](docs/current-state-2026-10.md)
 - [Product Requirements](docs/product-requirements.md)
 - [MVP Scope](docs/mvp-scope.md)
