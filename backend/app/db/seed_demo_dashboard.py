@@ -7,6 +7,8 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth.service import hash_password, normalize_email, verify_password
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.account import Account, PaymentInstrument
 from app.models.category import Category
@@ -16,7 +18,6 @@ from app.models.transaction import Transaction
 from app.models.user import User
 
 DEMO_FAMILY_NAME = "Demo Family Cash Flow"
-DEMO_OWNER_EMAIL = "demo-owner@example.local"
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,18 @@ class DemoSeedResult:
     transaction_count: int
 
 
-def seed_demo_dashboard(db: Session) -> DemoSeedResult:
+def seed_demo_dashboard(
+    db: Session,
+    *,
+    demo_email: str,
+    demo_password: str,
+) -> DemoSeedResult:
+    if not demo_email.strip() or not demo_password or len(demo_password) < 12:
+        raise ValueError(
+            "Set DEMO_USER_EMAIL and a DEMO_USER_PASSWORD of at least 12 characters for local seeding."
+        )
     family = _get_or_create_family(db)
-    owner = _get_or_create_owner(db, family)
+    owner = _get_or_create_owner(db, family, demo_email, demo_password)
     account = _get_or_create_account(db, family, owner)
     _get_or_create_payment_instrument(db, account)
 
@@ -70,19 +80,19 @@ def _get_or_create_family(db: Session) -> Family:
     return family
 
 
-def _get_or_create_owner(db: Session, family: Family) -> User:
-    owner = db.scalar(
-        select(User).where(
-            User.family_id == family.id,
-            User.email == DEMO_OWNER_EMAIL,
-        )
-    )
+def _get_or_create_owner(db: Session, family: Family, email: str, password: str) -> User:
+    normalized_email = normalize_email(email)
+    owner = db.scalar(select(User).where(User.email == normalized_email))
     if owner is not None:
+        if owner.family_id != family.id:
+            raise ValueError("The configured demo email is already assigned to another family.")
+        if not verify_password(password, owner.password_hash):
+            owner.password_hash = hash_password(password)
         return owner
     owner = User(
         family=family,
-        email=DEMO_OWNER_EMAIL,
-        password_hash="demo-not-for-login",
+        email=normalized_email,
+        password_hash=hash_password(password),
         display_name="Demo Owner",
     )
     db.add(owner)
@@ -202,7 +212,9 @@ def _get_or_create_transaction(
     return transaction
 
 
-def _demo_transactions(categories: dict[str, Category], merchants: dict[str, Merchant]) -> list[dict]:
+def _demo_transactions(
+    categories: dict[str, Category], merchants: dict[str, Merchant]
+) -> list[dict]:
     return [
         {
             "bank_transaction_id": "demo-2026-05-01-income",
@@ -309,8 +321,18 @@ def _demo_transactions(categories: dict[str, Category], merchants: dict[str, Mer
 
 
 def main() -> None:
+    if settings.app_env.lower() in {"prod", "production"}:
+        raise SystemExit("Demo seeding is disabled in production.")
+    if not settings.demo_user_email or not settings.demo_user_password:
+        raise SystemExit(
+            "Set DEMO_USER_EMAIL and DEMO_USER_PASSWORD in backend/.env before seeding."
+        )
     with SessionLocal() as db:
-        result = seed_demo_dashboard(db)
+        result = seed_demo_dashboard(
+            db,
+            demo_email=settings.demo_user_email,
+            demo_password=settings.demo_user_password,
+        )
     print(f"Demo family_id: {result.family_id}")
     print(f"Demo account_id: {result.account_id}")
     print(f"Demo transactions: {result.transaction_count}")

@@ -17,6 +17,16 @@
 - `POST /auth/logout` - выход.
 - `GET /auth/me` - текущий пользователь.
 
+Login and refresh return a short-lived JWT access token in the JSON response. The opaque refresh
+token is delivered only as an HttpOnly cookie; JavaScript must not read or persist it. The JWT
+subject is the user UUID. The backend loads the user's family from PostgreSQL and does not authorize
+from a client-supplied family ID or token family claim. `/auth/me` returns the user and family IDs,
+display name, email, language, and family name.
+
+For production, serve the frontend and API on the same site, preferably under a shared custom domain.
+If deployment requires a cross-site cookie, configure `AUTH_COOKIE_SAMESITE=none` and
+`AUTH_COOKIE_SECURE=true`; use HTTPS and configure the exact frontend origin for credentialed CORS.
+
 ## Imports
 
 - `POST /imports/xlsx/preview` - загрузить XLSX и получить preview.
@@ -91,6 +101,10 @@ Confirm должен возвращать final summary:
 - `to`
 - `scope`
 - `account_id`
+
+The family is selected from the authenticated user. `family_id` is not a supported authorization
+parameter on Web routes; entity IDs such as accounts, transactions, categories, merchants, and import
+batches are checked against that family.
 
 ## Cash
 

@@ -2,13 +2,15 @@ from collections.abc import Generator
 from io import BytesIO
 
 import pytest
+from auth_helpers import current_test_user_dependency
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
+from app.auth.dependencies import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -38,6 +40,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = current_test_user_dependency(db_session)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -123,7 +126,7 @@ def test_get_import_preview_filters_by_status(client: TestClient, db_session: Se
     assert payload["rows"][0]["reason_codes"] == ["person_transfer"]
 
 
-def test_get_import_preview_returns_404_for_other_family(
+def test_get_import_preview_uses_authenticated_family_instead_of_query_parameter(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -139,11 +142,13 @@ def test_get_import_preview_returns_404_for_other_family(
         params={"family_id": str(other_family.id)},
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Import preview not found."
+    assert response.status_code == 200
+    assert response.json()["summary"]["import_batch_id"] == import_batch_id
 
 
-def test_confirm_import_preview_creates_transactions(client: TestClient, db_session: Session) -> None:
+def test_confirm_import_preview_creates_transactions(
+    client: TestClient, db_session: Session
+) -> None:
     family, user = _create_family_and_user(db_session)
     account = _create_account(db_session, family, user)
     upload_response = _upload_statement_preview(client, family, user)
@@ -181,26 +186,26 @@ def test_create_import_preview_rejects_non_xlsx(client: TestClient, db_session: 
     assert response.json()["detail"] == "Only .xlsx files are supported."
 
 
-def test_create_import_preview_rejects_user_from_other_family(
+def test_create_import_preview_ignores_client_family_and_uploader_ids(
     client: TestClient,
     db_session: Session,
 ) -> None:
+    caller_family = Family(name="Caller")
     target_family = Family(name="Target")
-    other_family = Family(name="Other")
     user = User(
-        family=other_family,
+        family=caller_family,
         email="owner@example.com",
         password_hash="hash",
         display_name="Owner",
     )
-    db_session.add_all([target_family, other_family, user])
+    db_session.add_all([caller_family, target_family, user])
     db_session.commit()
 
     response = client.post(
         "/api/v1/imports/preview",
         params={
             "family_id": str(target_family.id),
-            "uploaded_by_user_id": str(user.id),
+            "uploaded_by_user_id": "00000000-0000-0000-0000-000000000000",
         },
         files={
             "file": (
@@ -211,8 +216,11 @@ def test_create_import_preview_rejects_user_from_other_family(
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Uploader does not belong to the target family."
+    assert response.status_code == 201
+    batch = db_session.scalar(select(ImportBatch))
+    assert batch is not None
+    assert batch.family_id == caller_family.id
+    assert batch.uploaded_by_user_id == user.id
 
 
 def _create_family_and_user(db_session: Session) -> tuple[Family, User]:

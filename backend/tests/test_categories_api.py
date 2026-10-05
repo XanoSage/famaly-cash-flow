@@ -1,17 +1,20 @@
 from collections.abc import Generator
 
 import pytest
+from auth_helpers import current_test_user_dependency
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
+from app.auth.dependencies import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.category import Category, Subcategory
 from app.models.family import Family
+from app.models.user import User
 
 
 @pytest.fixture()
@@ -33,6 +36,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = current_test_user_dependency(db_session)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -58,8 +62,22 @@ def test_list_categories_returns_system_and_family_categories(
     )
     family_category = Category(family=family, name="Kids", is_system=False)
     other_category = Category(family=other_family, name="Other private", is_system=False)
+    user = User(
+        family=family,
+        email="owner@example.com",
+        password_hash="test-hash",
+        display_name="Owner",
+    )
     db_session.add_all(
-        [family, other_family, system_category, system_subcategory, family_category, other_category]
+        [
+            family,
+            other_family,
+            system_category,
+            system_subcategory,
+            family_category,
+            other_category,
+            user,
+        ]
     )
     db_session.commit()
 

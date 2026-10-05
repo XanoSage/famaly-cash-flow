@@ -24,7 +24,11 @@ services:
       API_V1_PREFIX: /api/v1
       POSTGRES_HOST: postgres
       DATABASE_URL: postgresql+psycopg://family_cash_flow:family_cash_flow_dev@postgres:5432/family_cash_flow
-      JWT_SECRET_KEY: change-me-in-local-env
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-me-not-production}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
     ports:
       - "8000:8000"
     depends_on:

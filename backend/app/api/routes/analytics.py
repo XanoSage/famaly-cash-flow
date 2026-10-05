@@ -13,7 +13,10 @@ from app.analytics.savings import SavingsAnalyticsService
 from app.analytics.summary import AnalyticsSummaryService
 from app.analytics.timeline import TimelineAnalyticsService
 from app.analytics.work_fop import WorkFopAnalyticsService
+from app.auth.authorization import validate_analytics_entities
+from app.auth.dependencies import get_current_user
 from app.db.session import get_db
+from app.models.user import User
 from app.schemas.analytics import (
     AnalyticsDashboardResponse,
     AnalyticsInsightResponse,
@@ -35,15 +38,16 @@ router = APIRouter(prefix="/analytics")
 
 @router.get("/summary", response_model=AnalyticsSummaryResponse)
 def get_analytics_summary(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
     scope: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> AnalyticsSummaryResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     summary = AnalyticsSummaryService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,
@@ -54,7 +58,7 @@ def get_analytics_summary(
 
 @router.get("/by-merchant", response_model=MerchantAnalyticsResponse)
 def get_analytics_by_merchant(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
@@ -64,8 +68,11 @@ def get_analytics_by_merchant(
     sort_by: str = Query("amount", pattern="^(amount|count)$"),
     db: Session = Depends(get_db),
 ) -> MerchantAnalyticsResponse:
+    validate_analytics_entities(
+        db, current_user.family_id, account_id=account_id, category_id=category_id
+    )
     analytics = MerchantAnalyticsService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,
@@ -79,7 +86,7 @@ def get_analytics_by_merchant(
 
 @router.get("/by-category", response_model=CategoryAnalyticsResponse)
 def get_analytics_by_category(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
@@ -89,8 +96,9 @@ def get_analytics_by_category(
     sort_by: str = Query("amount", pattern="^(amount|count)$"),
     db: Session = Depends(get_db),
 ) -> CategoryAnalyticsResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     analytics = CategoryAnalyticsService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,
@@ -104,7 +112,7 @@ def get_analytics_by_category(
 
 @router.get("/timeline", response_model=TimelineAnalyticsResponse)
 def get_analytics_timeline(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
@@ -112,8 +120,9 @@ def get_analytics_timeline(
     granularity: str = Query("day", pattern="^day$"),
     db: Session = Depends(get_db),
 ) -> TimelineAnalyticsResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     analytics = TimelineAnalyticsService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,
@@ -125,7 +134,7 @@ def get_analytics_timeline(
 
 @router.get("/dashboard", response_model=AnalyticsDashboardResponse)
 def get_analytics_dashboard(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
@@ -134,8 +143,9 @@ def get_analytics_dashboard(
     merchant_limit: int = Query(5, ge=1, le=20),
     db: Session = Depends(get_db),
 ) -> AnalyticsDashboardResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     common_filters = {
-        "family_id": family_id,
+        "family_id": current_user.family_id,
         "occurred_from": occurred_from,
         "occurred_to": occurred_to,
         "account_id": account_id,
@@ -167,7 +177,7 @@ def get_analytics_dashboard(
 
 @router.get("/insights", response_model=AnalyticsInsightsResponse)
 def get_analytics_insights(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
@@ -175,8 +185,9 @@ def get_analytics_insights(
     limit: int = Query(10, ge=1, le=20),
     db: Session = Depends(get_db),
 ) -> AnalyticsInsightsResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     insights = AnalyticsInsightsService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,
@@ -188,15 +199,16 @@ def get_analytics_insights(
 
 @router.get("/savings", response_model=SavingsAnalyticsResponse)
 def get_analytics_savings(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
     scope: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> SavingsAnalyticsResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     savings = SavingsAnalyticsService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,
@@ -207,7 +219,7 @@ def get_analytics_savings(
 
 @router.get("/work-fop", response_model=WorkFopAnalyticsResponse)
 def get_analytics_work_fop(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     occurred_from: datetime | None = Query(None),
     occurred_to: datetime | None = Query(None),
     account_id: UUID | None = Query(None),
@@ -215,8 +227,9 @@ def get_analytics_work_fop(
     merchant_limit: int = Query(5, ge=1, le=20),
     db: Session = Depends(get_db),
 ) -> WorkFopAnalyticsResponse:
+    validate_analytics_entities(db, current_user.family_id, account_id=account_id)
     analytics = WorkFopAnalyticsService(db).build(
-        family_id=family_id,
+        family_id=current_user.family_id,
         occurred_from=occurred_from,
         occurred_to=occurred_to,
         account_id=account_id,

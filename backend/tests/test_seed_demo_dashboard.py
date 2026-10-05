@@ -1,8 +1,7 @@
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-
-import pytest
 
 from app import models  # noqa: F401
 from app.db.base import Base
@@ -25,8 +24,16 @@ def db_session() -> Session:
 
 
 def test_seed_demo_dashboard_creates_demo_data_once(db_session: Session) -> None:
-    first = seed_demo_dashboard(db_session)
-    second = seed_demo_dashboard(db_session)
+    first = seed_demo_dashboard(
+        db_session,
+        demo_email="demo-owner@example.local",
+        demo_password="local-test-password",
+    )
+    second = seed_demo_dashboard(
+        db_session,
+        demo_email="DEMO-OWNER@example.local",
+        demo_password="local-test-password",
+    )
 
     assert first.family_id == second.family_id
     assert first.account_id == second.account_id

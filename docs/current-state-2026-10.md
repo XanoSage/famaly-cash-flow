@@ -1,170 +1,171 @@
 # Current State: 2026-10-05
 
-This audit was performed on `codex/rebaseline-2026-10`, created from
-`origin/staging` at `191428b50f948e92b740c86f3f03bb3f540033a2`. No changes were made to
-`main`, and no product code was changed during the audit.
+This document records the implementation state after the rebaseline and Web identity/authorization
+slice on `codex/identity-auth-foundation`. The rebaseline audit was committed as `0f5aae8` and merged
+into `staging` at `843c76f`. No work from this slice has been merged to `main`.
 
 ## Verified Working Features
 
-- FastAPI starts locally and `GET /api/v1/health` returns `{"status":"ok"}`.
-- The XLSX importer parses the configured bank format, stores draft previews, reopens drafts, and
-  confirms rows into transactions. These paths have backend tests using in-memory SQLite.
-- Transaction listing and limited updates, system category listing, and the analytics APIs are
-  implemented. Analytics include summary, dashboard, category, merchant, daily timeline, savings,
-  insights, and Work/FOP views. Backend amounts and aggregates use `Decimal`/PostgreSQL `NUMERIC`.
-- The Telegram webhook supports `/start`, `/summary`, `/review`, `/done`, review callbacks for
-  marking and categorizing transactions, and simple manual expense text. Summary reuses the
-  analytics service; other Telegram writes still contain their own persistence logic.
-- The frontend is a single React dashboard with date/scope filters, RU/UK labels, summary charts,
-  recent transactions, and review actions. The Vite dev server serves the app shell.
-- Two Alembic revisions form a single linear chain and generate PostgreSQL SQL in offline mode.
+- FastAPI health endpoint, family-scoped analytics, category listing, transaction listing/limited
+  updates, XLSX draft preview/reopen/confirmation, and the existing Telegram webhook remain present.
+- Web login uses normalized email and Argon2 password hashes. Access JWTs expire after the configured
+  15 minutes, identify the user UUID in `sub`, and carry no trusted family claim.
+- Refresh sessions persist in PostgreSQL through `auth_sessions`. Only SHA-256 refresh-token hashes
+  are stored; opaque refresh tokens rotate and are revoked on logout. The raw token is delivered as
+  an HttpOnly cookie.
+- `GET /api/v1/auth/me` returns user ID, display name, email, language, family ID, and family name.
+- Analytics, categories, transactions, and imports require a current authenticated user. Web routes
+  derive family scope from the persisted user's family. Account, category, merchant, transaction,
+  and import IDs are checked against that family. Import creation derives the uploader from the
+  authenticated user. Spoofed `family_id` and uploader query parameters do not change the scope.
+- The frontend has a login form, bootstraps access through the refresh cookie, keeps the access JWT
+  in memory, calls `/auth/me`, sends bearer tokens through a reusable API client, and has no manual
+  Family ID field. The existing dashboard remains intact.
+- Local demo seed creates/updates a demo user from `DEMO_USER_EMAIL` and `DEMO_USER_PASSWORD` and
+  stores an Argon2 hash. No demo password is committed or printed.
+- Three Alembic revisions form one linear chain. PostgreSQL offline SQL generation succeeds.
+
+## Architecture
+
+```text
+Web user -> authenticated FastAPI request -> persisted User -> User.family
+         -> shared application/domain services -> PostgreSQL
+
+Telegram user -> TelegramIdentity -> application User -> User.family
+               -> same shared application/domain services -> PostgreSQL
+```
+
+The second path is the next slice; `TelegramIdentity` and account linking are not implemented here.
+Telegram still uses `TELEGRAM_DEFAULT_FAMILY_ID` and `TELEGRAM_DEFAULT_ACCOUNT_ID`.
 
 ## Implementation Plan Phase Audit
 
-| Phase | State | Verified implementation |
+| Phase | State | Current evidence |
 |---|---|---|
-| 0. Repo and branch setup | Complete | `main` and `staging` exist; feature work is integrated on `staging`. |
-| 1. Monorepo skeleton | Complete | `backend`, `frontend`, `infra`, and `docs` exist. |
-| 2. Backend skeleton | Complete | FastAPI app, health route, project structure, and tests exist. |
-| 3. Database and migrations | Partial | PostgreSQL Compose service, SQLAlchemy models, two Alembic revisions, and category seed exist. A live PostgreSQL migration was not verifiable on this machine. Budget, notification, audit-log, and Telegram identity tables are absent. |
-| 4. Auth MVP | Not started | User/password-hash model fields and JWT settings exist, but there are no auth routes, token/session implementation, password handling, or current-user dependency. |
-| 5. XLSX parser spike | Partial | Parser and synthetic XLSX tests exist. Bank and Telegram transaction timestamps are naive; timezone conversion is not defined. |
-| 6. Import preview backend | Partial | Upload, persisted draft, preview retrieval, and expiry metadata exist. Duplicate detection, cleanup of expired drafts, row editing, and bulk actions do not. |
-| 7. Categorization engine | Not started | `categorization_rules` model/table exists, but no rule engine or rule CRUD is wired. The parser has only hard-coded flow/scope/review heuristics and does not assign categories. |
-| 8. Import confirmation | Partial | Confirmation creates transactions and skips rows already marked excluded/duplicate. There is no preview editing/action API, and the importer does not mark duplicate candidates. |
-| 9. Transactions API | Partial | List/filter and limited PATCH are present. Detail/create/delete endpoints, soft-delete action, audit history, and several planned filters are absent. |
-| 10. Analytics API | Partial | Summary, dashboard, category, merchant, daily timeline, savings, insights, and Work/FOP APIs exist. Budgets and budget-risk reporting do not. |
-| 11. Frontend skeleton | Partial | React/Vite/TypeScript and a dashboard screen exist. Routing, app shell, login, and authenticated API access do not. |
+| 0. Repo and branch setup | Complete | `staging` contains the rebaseline; feature work starts from it. |
+| 1. Monorepo skeleton | Complete | Backend, frontend, infrastructure, and docs are present. |
+| 2. Backend skeleton | Complete | FastAPI health route and backend tests pass. |
+| 3. Database and migrations | Partial | PostgreSQL models, Compose config, category seed, and three revisions exist. Live PostgreSQL migration was unavailable here. Budget, notification, audit-log, and Telegram identity tables are absent. |
+| 4. Auth MVP | Complete | Login, Argon2, short-lived JWT, persistent rotating refresh sessions, logout, `/me`, and family-derived authorization are implemented and tested. |
+| 5. XLSX parser spike | Partial | Parser and synthetic XLSX tests exist; imported timestamps remain naive and the timezone contract is unsettled. |
+| 6. Import preview backend | Partial | Upload, persisted draft, preview retrieval, and expiry metadata exist. Duplicate detection, expiry cleanup, row editing, and bulk actions are missing. |
+| 7. Categorization engine | Not started | Rule model/table exists, but no rule engine or rule CRUD is wired. |
+| 8. Import confirmation | Partial | Confirmation creates transactions and validates batch/account family. Preview editing, bulk actions, and active duplicate marking are missing. |
+| 9. Transactions API | Partial | List/filter and limited PATCH are present. Detail/create/delete endpoints, soft-delete action, and audit history are absent. |
+| 10. Analytics API | Partial | Summary, dashboard, category, merchant, timeline, savings, insights, and Work/FOP APIs exist. Budgets are absent. |
+| 11. Frontend skeleton | Partial | Login and authenticated dashboard loading work in the implementation; router and planned app shell/pages are absent. |
 | 12. Import UI | Not started | No upload, preview editing, bulk action, or confirmation UI exists. |
-| 13. Operations and dashboard UI | Partial | Dashboard and recent review queue exist. Full transactions screen, Web manual/cash entry, and planned dashboard blocks are absent. |
-| 14. Budgets and notifications | Not started | No budget/notification models, migrations, APIs, or UI exist. |
-| 15. DevOps MVP | Partial | Backend Dockerfile, Compose, and frontend build configuration exist. CI workflows and deployment automation are absent; Docker checks could not run here. |
+| 13. Operations and dashboard UI | Partial | Dashboard and recent review actions exist; full transaction and cash-entry flows are absent. |
+| 14. Budgets and notifications | Not started | No models, migrations, APIs, or UI exist. |
+| 15. DevOps MVP | Partial | Dockerfiles/Compose and build config exist; CI and deployment automation are absent. Docker was unavailable for local checks. |
 
 ## Incomplete Features and Technical Debt
 
-- **Identity and tenant isolation:** API routes accept `family_id` directly. There is no
-  authentication, authorization dependency, or verified ownership context. Treat every
-  family-scoped Web endpoint as unsafe to expose outside local development.
-- **Telegram identity:** runtime routing uses `TELEGRAM_DEFAULT_FAMILY_ID` and
-  `TELEGRAM_DEFAULT_ACCOUNT_ID`. There is no persistent Telegram-user-to-application-user mapping
-  or per-user authorization. The webhook secret is optional, so an unset secret leaves the
-  endpoint without request authentication.
-- **Duplicate detection:** the parser computes a fallback key in `normalized_payload`, but does not
-  compare it with other rows or stored transactions. No row receives `duplicate_candidate` from
-  the current import path; the confirmation service's duplicate skip is therefore not an active
-  safeguard.
-- **Import and categorization:** preview rows cannot be edited through the API, and bulk actions,
-  merchant/category rules, and categorization conflict handling are missing. `expires_at` is set,
-  but no scheduled cleanup is present.
-- **Transactions and audit:** PATCH changes only category, comment, and `needs_review`. Soft-delete
-  fields exist but no delete route sets them. There is no `AuditLog` model or migration.
-- **Budgets:** budget and notification concepts appear in planning documents, but there are no
-  implementation models, migrations, routes, or screens.
-- **Frontend:** one dashboard component reads a manually supplied family UUID from browser storage.
-  There is no router, auth flow, import UI, full operations UI, or frontend test script/suite.
-- **Timezones:** bank XLSX parsing produces naive datetimes, Telegram manual input uses
-  `datetime.now()` without a timezone, and the database columns are timezone-aware. PostgreSQL
-  session/server timezone behavior has not been verified. The test suite uses SQLite and does not
-  establish production timestamp behavior.
-- **Dependency reproducibility:** `backend/pyproject.toml` uses open lower bounds and has no Python
-  lock file. `frontend/package-lock.json` exists and `npm ci` succeeded. A clean Python install
-  resolved FastAPI 0.142.2, SQLAlchemy 2.1.3, pytest 9.1.1, Starlette 1.7.0, and httpx 0.28.1;
-  pytest emitted one Starlette deprecation warning about its httpx test client integration.
-  `pip list --outdated --format=json` reported pip 25.0.1 (latest 26.2.1) and pydantic-core 2.46.5
-  (latest 2.49.0); the installed Pydantic release pins pydantic-core to 2.46.5, so update them as
-  a compatible pair rather than upgrading the core package alone.
-- **Frontend dependency health:** on 2026-10-05, `npm outdated --json` reported newer versions for
-  React/React DOM 19.2.7 (wanted 19.3.0), Vite 7.3.5 (wanted 7.3.6; latest 8.3.2), TypeScript
-  5.9.3 (latest 7.0.2), `@vitejs/plugin-react` 5.2.0 (latest 6.1.2), `lucide-react` 0.468.0
-  (latest 1.52.0), Recharts 2.15.4 (latest 3.10.1), and the React type packages. npm reported
-  Recharts 2.x is no longer an active branch. `npm audit` reported 5 fix-available vulnerabilities:
-  3 high, 1 moderate, and 1 low across Browserslist, Nano ID, PostCSS, esbuild, and
-  baseline-browser-mapping. No dependency upgrades were made in this audit.
-- **Build warning:** Vite emitted a 609.31 kB minified JavaScript chunk warning (over its 500 kB
-  guidance threshold). The build still succeeded.
-- **Local docs and startup:** `frontend/README.md` contains old absolute Windows paths. Compose
-  starts Postgres and the API, but does not apply migrations or seed data; those remain manual
-  steps documented under `backend/README.md`. `mvp-scope.md` still lists Telegram outside the MVP
-  and `roadmap.md` labels it later; reconcile those statements with Telegram's core product role.
+- **Telegram authorization:** there is no persistent Telegram-user-to-application-user mapping or
+  per-user authorization. Default family/account routing remains a security risk if the webhook is
+  exposed. Telegram write handlers still contain persistence logic instead of consistently using
+  shared services.
+- **Import and categorization:** preview rows cannot be edited through the API; bulk actions,
+  merchant/category rules, duplicate comparison, conflict handling, and draft cleanup are missing.
+- **Transactions and audit:** PATCH changes category, comment, and review state. Soft-delete fields
+  exist but no endpoint uses them. There is no audit log.
+- **Budgets:** budget and notification concepts remain documentation-only.
+- **Frontend:** one dashboard and login screen exist. There is no router, import UI, full operations
+  UI, or frontend test suite.
+- **Timezones:** bank XLSX parsing produces naive datetimes; Telegram manual input uses naive
+  `datetime.now()`. PostgreSQL timestamp behavior was not verified.
+- **Session operations:** there is no expired-session cleanup job or login throttling. Revoked and
+  expired rows remain in the auth-session table until future cleanup is added.
+- **Migration data check:** the new migration normalizes existing emails and requires them to be
+  globally unique. It intentionally aborts if legacy rows collide after trim/lowercase; resolve
+  those identities before applying the migration to such a database.
+- **Dependency reproducibility:** backend requirements have open lower bounds and no Python lock
+  file. `frontend/package-lock.json` is present. The backend test client emits a Starlette warning
+  that its httpx integration is deprecated.
+- **Frontend dependencies:** the baseline `npm audit` reported five fix-available findings (3 high,
+  1 moderate, 1 low); no broad dependency upgrades were made for authentication. Vite also warns
+  that the existing minified dashboard chunk exceeds 500 kB.
+- **Docs/product scope:** `mvp-scope.md` still calls Telegram “Later”, although Telegram is a core
+  product requirement. Reconcile that wording in a product-doc task.
 
-## Security Risks
+## Security Notes
 
-- Without authentication, a caller who supplies a known family UUID can read family analytics and
-  transactions or update transactions through the API. UUIDs are identifiers, not authorization.
-- Telegram commands and callbacks act on the configured default family/account rather than an
-  authenticated mapped user. Keep the bot local until identity mapping and authorization exist.
-- `docker-compose.yml` and `.env.example` contain development credentials and a placeholder JWT
-  secret. They must not be used as production credentials.
-- Uploads have an extension check and are deleted after parsing, but no request/file-size limit is
-  defined. Do not add logs containing financial rows, descriptions, amounts, or Telegram message
-  text.
+- Web financial endpoints now require an active user and live server-side session. The backend
+  derives family access from persisted user data; UUIDs in query strings cannot switch families.
+- Email is globally unique for the one-family-per-user MVP. The login lookup and migration both
+  trim and lowercase email addresses.
+- Production settings reject the local JWT placeholder, JWT secrets shorter than 32 characters,
+  insecure production cookies, and `SameSite=None` without Secure.
+- Use a same-site custom domain for frontend/API in production. If cross-site cookies are required,
+  configure `AUTH_COOKIE_SAMESITE=none`, `AUTH_COOKIE_SECURE=true`, HTTPS, and credentialed CORS for
+  the exact frontend origin. Browsers may block third-party cookies.
+- Do not log JWTs, refresh tokens, password hashes, transaction details, bank rows, amounts, or
+  Telegram message text. Upload size limits are still absent.
 
-## Local Development Commands
+## Local Development
 
-Run Compose from the repository root; run Python commands from `backend`.
+Create a local `.env` from `.env.example`, set `DEMO_USER_EMAIL` and `DEMO_USER_PASSWORD`, and keep
+the file untracked. For direct backend execution, place a copy at `backend/.env` because settings
+load `.env` from the working directory.
 
 ```powershell
-# Backend environment (Python 3.11+)
-cd backend
-python -m pip install -e ".[dev]"
-cd ..
+# Repository root: start PostgreSQL
 docker compose up -d postgres
-cd backend
-alembic upgrade head
+
+# Backend: migrate, seed, and start API
+Set-Location backend
+python -m pip install -e ".[dev]"
+python -m alembic upgrade head
 python -m app.db.seed_system_categories
 python -m app.db.seed_demo_dashboard
-uvicorn app.main:app --reload
-python -m pytest
-```
+python -m uvicorn app.main:app --reload
 
-```powershell
-# Frontend
-cd frontend
+# Frontend, in another terminal
+Set-Location frontend
 npm ci
-npm run dev -- --host 127.0.0.1 --port 5173
-npm run build
+npm run dev -- --host localhost
 ```
 
-Frontend defaults to `http://localhost:8000/api/v1`; override with
-`VITE_API_BASE_URL` when needed. On the audit machine, `python` was not on `PATH`, and npm needed
-`NODE_OPTIONS=--use-system-ca` plus a temporary cache to work around the local certificate/cache
-setup. These are machine setup details, not repository code fixes.
+Open `http://localhost:5173/` and log in with the local demo email/password. Use `localhost` for
+both frontend and API so the refresh cookie remains same-site. Backend tests run with
+`python -m pytest`; frontend TypeScript and production build run with `npm run build`.
 
-## Commands Executed and Results
+## Verification Results
 
-Environment: Windows PowerShell, Python 3.12.14, Node 24.21.0, npm 11.19.0.
+The backend API tests use SQLite. SQLite does not establish PostgreSQL migration, row-locking, or
+timestamp behavior.
 
-| Command/check | Result |
-|---|---|
-| From backend: .\.venv\Scripts\python.exe -m pip list --outdated --format=json with PIP_CACHE_DIR set to $env:TEMP\family-cash-flow-pip-cache | Exit 0; pip and pydantic-core updates were reported as described above. |
-| `python -m pytest` from `backend` | Could not start: `python` was not on `PATH`. |
-| From `backend`: `.\.venv\Scripts\python.exe -m pip install -e '.[dev]' --use-feature=truststore --timeout 20 --retries 0` with `PIP_CACHE_DIR` set to `$env:TEMP\family-cash-flow-pip-cache` | Exit 0; resolved unpinned package versions listed above. `pip check` reported no broken requirements. |
-| From `backend`: `.\.venv\Scripts\python.exe -m pytest` | Exit 0: **106 passed, 1 warning, 23.71 s**. Tests use in-memory SQLite, not PostgreSQL. |
-| `npm.cmd run build` before install | Could not start: `tsc` was missing because `node_modules` was absent. |
-| From `frontend`: set `$env:NODE_OPTIONS='--use-system-ca'`, set `$npmCache = Join-Path $env:TEMP 'family-cash-flow-npm-cache'`, then run `npm.cmd ci --cache $npmCache --prefer-offline` | Exit 0; 109 packages installed. npm printed a Recharts deprecation notice and reported 5 vulnerabilities. |
-| `npm.cmd run build` from `frontend` | Exit 0; `tsc -b` and Vite production build passed. Vite reported the 609.31 kB chunk warning. |
-| `npm.cmd audit --json` | Exit 1 because of 5 fix-available findings: 3 high, 1 moderate, 1 low. |
-| `npm.cmd outdated --json` | Exit 1 because newer package versions are available. See dependency notes above. |
-| From `backend`: `.\.venv\Scripts\python.exe -m alembic history --verbose` | Exit 0; one head, `202605120002`, after `202605120001`. |
-| From `backend`: `.\.venv\Scripts\python.exe -m alembic upgrade head --sql` | Exit 0; generated 11,330 bytes of PostgreSQL SQL for both revisions. This is offline generation, not a live database migration. |
-| From `backend`: `.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000`, then GET `/api/v1/health` | Server started; HTTP 200 with `{"status":"ok"}`. |
-| From `frontend`: `npm.cmd run dev -- --host 127.0.0.1 --port 5173`, then GET `/` | Server started; HTTP 200 with `text/html`. |
-| `docker --version`, `docker compose version`, `docker compose config --quiet`, `docker compose ps -a` | Each was blocked with exit 1: `docker` is not recognized. No PostgreSQL Windows service, `psql`/`postgres` command, or listener on port 5433 was found. |
-| `git diff --check` | Exit 0; Git printed a working-copy LF-to-CRLF notice for `README.md`. |
+- `cd backend; .\.venv\Scripts\python.exe -m pytest -q`: **121 passed, 1 warning in 12.14s**.
+  The warning is Starlette's deprecated `httpx` test-client integration.
+- `cd backend; .\.venv\Scripts\python.exe -m pip check`: **No broken requirements found.**
+- `cd backend; .\.venv\Scripts\ruff.exe check --select F,I <changed Python files>` and
+  `ruff.exe format --check <changed Python files>`: **passed**; 30 changed Python files are
+  formatted. The repository-wide `ruff check app tests --statistics --output-format concise` check
+  is not clean: it reports 240 findings, mainly datetime calls without timezone, FastAPI
+  `Depends`/`Query` default calls, quoted annotations, and import ordering. No broad cleanup was
+  included in this slice.
+- `cd backend; .\.venv\Scripts\python.exe -m alembic history --verbose`: **passed**; the auth
+  revision `202610050001` is head after `202605120002` and `202605120001`.
+- `cd backend; .\.venv\Scripts\python.exe -m alembic upgrade head --sql`: **passed** and generated
+  PostgreSQL SQL including the email collision guard, unique constraint, and `auth_sessions` table.
+  It was offline SQL generation, not a live database migration.
+- `cd frontend; npm.cmd ci --cache <temporary npm cache> --prefer-offline`: **passed**, 109 packages
+  installed. npm reported five audit findings (1 low, 1 moderate, 3 high); Recharts is deprecated,
+  and npm printed an esbuild install-script warning.
+- `cd frontend; npm.cmd run build`: **passed** (`tsc -b` and Vite). The minified JavaScript bundle is
+  612.47 kB (177.39 kB gzip), above Vite's 500 kB warning threshold.
+- Browser smoke check with a temporary SQLite database, FastAPI at `localhost:8000`, and Vite at
+  `localhost:5173`: **passed**. Login loaded the authenticated demo family dashboard and seeded
+  transactions; logout returned to the login screen. This did not exercise PostgreSQL.
+- Docker Compose and live PostgreSQL checks were unavailable: `docker` and `psql` were not installed
+  or on `PATH`. The Compose startup, live migration, and PostgreSQL-backed seed/login remain
+  unverified.
 
-The actual `alembic upgrade head` against PostgreSQL, Compose startup, demo seeding against
-PostgreSQL, and database-backed local flows remain unverified on this machine.
+## Recommended Next Slice
 
-## Recommended Next Implementation Slices
-
-1. **Next task — Identity/Authorization foundation for Web and Telegram.** Add email/password
-   authentication and `/auth/me`; derive family context from the authenticated user instead of
-   trusting `family_id`; add an Alembic-backed Telegram identity link with a secure, one-time linking
-   flow; authorize Telegram commands/callbacks as the linked application user; remove the default
-   family/account routing shortcut; route both channels through shared application/domain services.
-   Add tests for login, link lifecycle, cross-family denial, and Telegram callback authorization.
-2. Implement duplicate detection, preview row editing/bulk actions, and the categorized-rule engine
-   as separately testable backend slices. Set an explicit timezone contract for imported and manual
-   transactions before enabling real data.
-3. Build the Web import/review and full transactions flows on the secured APIs; add frontend tests.
-4. Add budgets/notifications and CI checks after their data/API contracts are implemented.
+Implement **TelegramIdentity + secure one-time Telegram account linking + removal of
+`TELEGRAM_DEFAULT_FAMILY_ID` / `TELEGRAM_DEFAULT_ACCOUNT_ID`**. Link Telegram to the existing
+application `User`, resolve the family through that persisted identity, authorize commands and
+callbacks, and route shared writes through the same application/domain services used by Web. Add
+tests for one-time/expired/replayed links, unlinked users, cross-family denial, and authorized
+Telegram callbacks. Do not create a second auth/session system for Telegram.

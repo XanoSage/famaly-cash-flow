@@ -7,17 +7,27 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.auth.authorization import (
+    require_family_account,
+    require_family_category,
+    require_family_merchant,
+)
+from app.auth.dependencies import get_current_user
 from app.db.session import get_db
-from app.models.category import Category
 from app.models.transaction import Transaction
-from app.schemas.transactions import TransactionListResponse, TransactionResponse, TransactionUpdateRequest
+from app.models.user import User
+from app.schemas.transactions import (
+    TransactionListResponse,
+    TransactionResponse,
+    TransactionUpdateRequest,
+)
 
 router = APIRouter(prefix="/transactions")
 
 
 @router.get("", response_model=TransactionListResponse)
 def list_transactions(
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     occurred_from: datetime | None = Query(None),
@@ -31,6 +41,13 @@ def list_transactions(
     include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ) -> TransactionListResponse:
+    family_id = current_user.family_id
+    if account_id is not None:
+        require_family_account(db, family_id, account_id)
+    if merchant_id is not None:
+        require_family_merchant(db, family_id, merchant_id)
+    if category_id is not None:
+        require_family_category(db, family_id, category_id)
     query = select(Transaction).where(Transaction.family_id == family_id)
     query = _apply_filters(
         query,
@@ -65,9 +82,10 @@ def list_transactions(
 def update_transaction(
     transaction_id: UUID,
     payload: TransactionUpdateRequest,
-    family_id: UUID = Query(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TransactionResponse:
+    family_id = current_user.family_id
     transaction = db.scalar(
         select(Transaction)
         .options(joinedload(Transaction.merchant), joinedload(Transaction.category))
@@ -82,7 +100,11 @@ def update_transaction(
 
     changes = payload.model_dump(exclude_unset=True)
     if "category_id" in changes:
-        transaction.category = _get_category(db, family_id, payload.category_id)
+        transaction.category = (
+            require_family_category(db, family_id, payload.category_id)
+            if payload.category_id is not None
+            else None
+        )
     if "comment" in changes:
         transaction.comment = payload.comment
     if "needs_review" in changes and payload.needs_review is not None:
@@ -125,20 +147,6 @@ def _apply_filters(
     if needs_review is not None:
         query = query.where(Transaction.needs_review == needs_review)
     return query
-
-
-def _get_category(db: Session, family_id: UUID, category_id: UUID | None) -> Category | None:
-    if category_id is None:
-        return None
-    category = db.scalar(
-        select(Category).where(
-            Category.id == category_id,
-            (Category.family_id == family_id) | (Category.family_id.is_(None)),
-        )
-    )
-    if category is None:
-        raise HTTPException(status_code=400, detail="Category not found for family")
-    return category
 
 
 def _to_response(transaction: Transaction) -> TransactionResponse:

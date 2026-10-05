@@ -39,6 +39,12 @@ select {
   justify-content: space-between;
 }
 
+.account-controls {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
 .eyebrow {
   color: #2a6f8f;
   font-size: 13px;
@@ -86,8 +92,31 @@ h1 {
   border-radius: 8px;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(140px, 1fr)) auto;
+  grid-template-columns: repeat(3, minmax(140px, 1fr)) auto;
   padding: 16px;
+}
+
+.login-form {
+  background: #ffffff;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  margin: 12vh auto 0;
+  max-width: 460px;
+  padding: 24px;
+  width: 100%;
+}
+
+.secondary-button {
+  background: #ffffff;
+  border: 1px solid #cbd6e2;
+  border-radius: 6px;
+  color: #344054;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 14px;
 }
 
 .field {
@@ -559,7 +588,8 @@ svg {
     padding: 16px;
   }
 
-  .topbar {
+  .topbar,
+  .account-controls {
     flex-direction: column;
   }
 
