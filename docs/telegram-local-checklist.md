@@ -1,91 +1,71 @@
 # Telegram Local Checklist
 
-This checklist is for the first real Telegram bot smoke test against local backend and demo data.
+This checklist exercises the real Bot API. It requires bot credentials and a public HTTPS tunnel;
+unit tests do not replace this smoke test.
 
-## 1. Prepare Backend Data
+## 1. Prepare the Application
 
-From `backend`:
+From the repository root, set local-only values in `.env` and copy the file to `backend/.env`:
+
+```env
+DEMO_USER_EMAIL=you@example.test
+DEMO_USER_PASSWORD=<local password>
+TELEGRAM_BOT_TOKEN=<token from BotFather>
+TELEGRAM_BOT_USERNAME=<bot username without @>
+TELEGRAM_WEBHOOK_SECRET_TOKEN=<random local secret>
+```
+
+Start PostgreSQL and prepare the demo user:
 
 ```powershell
 docker compose up -d postgres
-alembic upgrade head
+Set-Location backend
+python -m alembic upgrade head
 python -m app.db.seed_system_categories
 python -m app.db.seed_demo_dashboard
+python -m uvicorn app.main:app --reload
 ```
 
-Copy both values printed by demo seed:
+Use the credentials from `.env` to sign in at `http://localhost:5173/`.
 
-- `Demo family_id`
-- `Demo account_id`
+## 2. Set the Telegram Webhook
 
-## 2. Fill Backend Env
+Expose the backend with an HTTPS tunnel such as ngrok or cloudflared, then register
+`https://<public-tunnel-host>/api/v1/telegram/webhook` with Telegram using
+`TELEGRAM_WEBHOOK_SECRET_TOKEN` as the webhook secret token.
 
-In backend `.env`:
+## 3. Link the Telegram Account
 
-```env
-TELEGRAM_BOT_TOKEN=<bot token from BotFather>
-TELEGRAM_WEBHOOK_SECRET_TOKEN=<random local secret>
-TELEGRAM_DEFAULT_FAMILY_ID=<Demo family_id>
-TELEGRAM_DEFAULT_ACCOUNT_ID=<Demo account_id>
-```
+In the signed-in Web account area:
 
-`TELEGRAM_DEFAULT_FAMILY_ID` and `TELEGRAM_DEFAULT_ACCOUNT_ID` are temporary MVP shortcuts until Telegram users are linked to real Family Cash Flow users/families in the database.
+1. Select **Create link**.
+2. Open the Telegram deep link before its displayed expiration time.
+3. Send `/start <token>` in the private bot conversation.
+4. Return to Web and refresh the Telegram status. It should show the linked account.
 
-## 3. Run Backend
+The link expires after 15 minutes and can be used once. If it expires, generate another from Web.
+Do not share the link or token. No family or account IDs are entered in Telegram configuration.
 
-From `backend`:
+## 4. Check Telegram Workflows
 
-```powershell
-uvicorn app.main:app --reload
-```
-
-Local webhook endpoint:
+Send these messages in the private bot conversation:
 
 ```text
-POST http://127.0.0.1:8000/api/v1/telegram/webhook
-```
-
-Telegram needs a public HTTPS URL. For local testing, expose the backend with a tunnel such as ngrok or cloudflared, then set Telegram webhook to:
-
-```text
-https://<public-tunnel-host>/api/v1/telegram/webhook
-```
-
-When setting the webhook, pass the same secret as `X-Telegram-Bot-Api-Secret-Token`.
-
-## 4. Manual Bot Smoke Test
-
-Send these messages to the bot:
-
-```text
-/start
 /summary
 /review
-```
-
-In `/review`:
-
-- press `Готово N` to clear `needs_review`;
-- press `Категория N`, then choose a category to assign it and clear `needs_review`.
-
-Manual transaction input:
-
-```text
+/account
 АТБ 450 еда
 Рынок 120 неизвестно
 ```
 
-Expected behavior:
+Choose an account with `/account`. A known category hint should create a categorized expense;
+an unknown hint should create an expense that needs review. Review buttons should mark an
+operation reviewed or assign a category.
 
-- known category hint creates an expense without review;
-- unknown category hint creates an expense with `needs_review=true`;
-- `/review` should show operations still needing review.
+Financial commands in a group must not return family data. Unlink Telegram from Web and confirm
+that subsequent commands receive an unlinked response.
 
-## 5. Backend Verification
+## 5. Verify Data
 
-After bot actions, check the dashboard or API:
-
-```text
-GET /api/v1/analytics/summary?family_id=<Demo family_id>
-GET /api/v1/transactions?family_id=<Demo family_id>&needs_review=true
-```
+Check the authenticated dashboard and transaction list in Web. Do not use client-supplied
+`family_id` values as an authorization mechanism.

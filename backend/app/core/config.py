@@ -1,7 +1,8 @@
+import re
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,11 +26,20 @@ class Settings(BaseSettings):
     demo_user_email: str | None = None
     demo_user_password: str | None = None
     telegram_bot_token: str | None = None
+    telegram_bot_username: str | None = None
     telegram_webhook_secret_token: str | None = None
-    telegram_default_family_id: str | None = None
-    telegram_default_account_id: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("telegram_bot_username")
+    @classmethod
+    def normalize_telegram_bot_username(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        username = value.strip().lstrip("@")
+        if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+            raise ValueError("TELEGRAM_BOT_USERNAME must be a Telegram username without @.")
+        return username
 
     @model_validator(mode="after")
     def validate_auth_settings(self) -> "Settings":
@@ -41,6 +51,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires JWT_SECRET_KEY with at least 32 characters.")
             if not self.effective_auth_cookie_secure:
                 raise ValueError("Production requires AUTH_COOKIE_SECURE=true.")
+            if self.telegram_bot_token and not self.telegram_webhook_secret_token:
+                raise ValueError(
+                    "Production requires TELEGRAM_WEBHOOK_SECRET_TOKEN when Telegram is enabled."
+                )
         if self.auth_cookie_samesite == "none" and not self.effective_auth_cookie_secure:
             raise ValueError("AUTH_COOKIE_SECURE must be true when AUTH_COOKIE_SAMESITE is none.")
         return self

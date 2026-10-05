@@ -21,6 +21,12 @@ from app.schemas.transactions import (
     TransactionResponse,
     TransactionUpdateRequest,
 )
+from app.services.transaction_review import (
+    UNSET,
+    CategoryNotFoundError,
+    TransactionNotFoundError,
+    TransactionReviewService,
+)
 
 router = APIRouter(prefix="/transactions")
 
@@ -86,32 +92,17 @@ def update_transaction(
     db: Session = Depends(get_db),
 ) -> TransactionResponse:
     family_id = current_user.family_id
-    transaction = db.scalar(
-        select(Transaction)
-        .options(joinedload(Transaction.merchant), joinedload(Transaction.category))
-        .where(
-            Transaction.id == transaction_id,
-            Transaction.family_id == family_id,
-            Transaction.deleted_at.is_(None),
-        )
-    )
-    if transaction is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
     changes = payload.model_dump(exclude_unset=True)
-    if "category_id" in changes:
-        transaction.category = (
-            require_family_category(db, family_id, payload.category_id)
-            if payload.category_id is not None
-            else None
+    try:
+        transaction = TransactionReviewService(db).update(
+            family_id=family_id,
+            transaction_id=transaction_id,
+            category_id=changes["category_id"] if "category_id" in changes else UNSET,
+            comment=changes["comment"] if "comment" in changes else UNSET,
+            needs_review=changes["needs_review"] if "needs_review" in changes else UNSET,
         )
-    if "comment" in changes:
-        transaction.comment = payload.comment
-    if "needs_review" in changes and payload.needs_review is not None:
-        transaction.needs_review = payload.needs_review
-
-    db.commit()
-    db.refresh(transaction)
+    except (TransactionNotFoundError, CategoryNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _to_response(transaction)
 
 

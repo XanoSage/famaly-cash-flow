@@ -10,7 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, created_at, updated_at, uuid_pk
 
 if TYPE_CHECKING:
+    from app.models.account import Account
     from app.models.family import Family
+    from app.models.telegram_identity import TelegramIdentity, TelegramLinkToken
 
 
 class User(Base):
@@ -29,6 +31,8 @@ class User(Base):
     family: Mapped["Family"] = relationship(back_populates="users")
     preferences: Mapped["UserPreference"] = relationship(back_populates="user")
     auth_sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user")
+    telegram_identity: Mapped["TelegramIdentity | None"] = relationship(back_populates="user")
+    telegram_link_tokens: Mapped[list["TelegramLinkToken"]] = relationship(back_populates="user")
 
 
 class AuthSession(Base):
@@ -52,8 +56,12 @@ class UserPreference(Base):
 
     id: Mapped[uuid_pk]
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
+    default_account_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
+    )
     language: Mapped[str] = mapped_column(String(8), default="ru", nullable=False)
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 
     user: Mapped[User] = relationship(back_populates="preferences")
+    default_account: Mapped["Account | None"] = relationship()

@@ -45,6 +45,53 @@ select {
   gap: 14px;
 }
 
+.telegram-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.telegram-heading,
+.telegram-actions,
+.telegram-link-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.telegram-heading h2 {
+  font-size: 18px;
+}
+
+.telegram-actions {
+  justify-content: flex-start;
+}
+
+.telegram-link-result,
+.telegram-manual-token {
+  display: grid;
+  gap: 10px;
+}
+
+.telegram-link-result p,
+.telegram-manual-token p {
+  color: #667085;
+  line-height: 1.45;
+}
+
+.telegram-anchor {
+  text-decoration: none;
+}
+
+.telegram-manual-token code {
+  overflow-wrap: anywhere;
+}
+
+.telegram-error {
+  color: #b64b3f;
+  font-size: 13px;
+}
+
 .eyebrow {
   color: #2a6f8f;
   font-size: 13px;
@@ -589,8 +636,12 @@ svg {
   }
 
   .topbar,
-  .account-controls {
+  .account-controls,
+  .telegram-heading,
+  .telegram-actions,
+  .telegram-link-actions {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .panel-heading {

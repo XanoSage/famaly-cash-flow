@@ -17,6 +17,21 @@
 - `POST /auth/logout` - выход.
 - `GET /auth/me` - текущий пользователь.
 
+## Telegram
+
+Authenticated endpoints derive the application user from the access token:
+
+- `POST /telegram/link-token` - create a 15-minute, single-use Telegram link token. The raw token
+  is returned only in this response; `telegram_url` is null if `TELEGRAM_BOT_USERNAME` is unset.
+- `GET /telegram/link-status` - return linked state and safe profile display fields.
+- `DELETE /telegram/link` - immediately disable the current user's Telegram identity.
+- `POST /telegram/webhook` - receive Telegram updates. Validate
+  `X-Telegram-Bot-Api-Secret-Token` when configured; production requires the secret when the bot
+  token is enabled.
+
+Telegram identity uses immutable `message.from.id` / `callback_query.from.id`. Private chat
+commands only; family scope is resolved through `TelegramIdentity -> User -> Family`.
+
 Login and refresh return a short-lived JWT access token in the JSON response. The opaque refresh
 token is delivered only as an HttpOnly cookie; JavaScript must not read or persist it. The JWT
 subject is the user UUID. The backend loads the user's family from PostgreSQL and does not authorize

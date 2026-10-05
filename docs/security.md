@@ -18,6 +18,24 @@ cross-site, configure `AUTH_COOKIE_SAMESITE=none`, `AUTH_COOKIE_SECURE=true`, HT
 CORS for the exact frontend origin. Browsers may block third-party cookies, so same-site hosting is
 the supported deployment shape.
 
+## Telegram Identity and Webhook
+
+- The authenticated Web user creates a random 32-byte, 15-minute link token. Only its SHA-256 hash
+  is stored. A conditional update and row lock consume it once; PostgreSQL locking behavior is
+  covered by design but still requires live PostgreSQL verification.
+- Telegram is identified by numeric `from.id`; usernames are display metadata and `chat.id` is
+  used only to reply. A unique database constraint allows one identity per user and Telegram ID.
+- Telegram family access is derived from the linked application user. Financial commands and
+  callbacks require a private chat; callback sender identity is resolved on every update.
+- Unlink marks the identity inactive and expires outstanding link tokens in the same request.
+- Configure `TELEGRAM_WEBHOOK_SECRET_TOKEN` in production whenever `TELEGRAM_BOT_TOKEN` is set.
+  Compare the received header in constant time.
+- Never log the raw link token, Telegram update text, bot token, webhook secret, or financial data.
+
+New Telegram manual timestamps are assigned as timezone-aware UTC instants. Display dates use the
+family's Europe/Kyiv timezone policy. Imported bank timestamps remain a separate unresolved
+timezone issue.
+
 ## Хранение данных
 
 - Финансовые операции хранятся в PostgreSQL.

@@ -1,81 +1,58 @@
 # Telegram Bot Plan
 
-## Why This Matters
+## Product Role
 
-Telegram Bot API 10.x adds stronger building blocks for bot-first workflows:
+Telegram is a core daily client for fast family finance tasks. Web remains the home for XLSX imports,
+deep transaction review, settings, detailed analytics, and Telegram account linking.
 
-- Rich messages can make weekly summaries, category tables, and review queues easier to read inside Telegram.
-- Mini Apps remain a good future path for opening the Family Cash Flow dashboard directly from a bot.
-- Inline buttons and ordinary bot commands are enough for the first useful MVP before adopting newer rich-message features.
+Telegram supports:
 
-Official docs:
+- quick manual expense entry (income entry is a follow-up);
+- short summaries;
+- a review queue with mark-reviewed and category assignment actions;
+- selecting a persisted default account.
 
-- https://core.telegram.org/bots/api
-- https://core.telegram.org/bots/features
+Telegram notifications and a Mini App remain future work.
 
-## Product Fit
+## Identity and Access
 
-For Family Cash Flow, Telegram should start as a quick family inbox, not as a second full frontend.
+The authenticated Web user requests a 15-minute, single-use link. The database stores only a
+SHA-256 token hash. The private `/start <token>` flow maps Telegram's numeric `from.id` to the
+application User. The Family is loaded through that User. Telegram usernames are display metadata;
+chat IDs are reply destinations, not identity.
 
-Good first workflows:
-
-- `/summary` returns income, expenses, savings, cash flow, and review count.
-- `/review` returns transactions where `needs_review=true`.
-- Inline buttons let a user mark an operation as reviewed.
-- Category buttons/select-like flows let a user assign a category and clear `needs_review`.
-- Later, plain text messages like `АТБ 450 еда` can create manual transaction drafts.
-
-## MVP Slices
-
-1. Backend webhook skeleton.
-   - Add `POST /api/v1/telegram/webhook`.
-   - Accept Telegram update JSON.
-   - Verify `X-Telegram-Bot-Api-Secret-Token` when configured.
-   - Return `{"ok": true}` while handlers are not implemented.
-
-2. Bot configuration.
-   - Add env vars for bot token and webhook secret.
-   - Keep token out of git.
-   - Add local documentation for setting webhook later.
-
-3. Read-only bot commands.
-   - `/start`
-   - `/summary`
-   - `/review`
-
-4. Review queue actions.
-   - Mark reviewed.
-   - Assign category and clear review flag.
-
-5. Manual transaction draft.
-   - Parse simple text input.
-   - Create draft/manual transaction with `needs_review=true` if parsing is uncertain.
-
-6. Rich messages and Mini App.
-   - Use rich messages for weekly reports when SDK support is stable.
-   - Consider a Telegram Mini App wrapper around the existing React dashboard.
-
-## Current Decision
-
-Start with webhook infrastructure and tests, then build bot behavior in small slices.
-Do not depend on the newest Telegram SDK features until the Python library support is stable.
-
-## Local Setup Notes
-
-- Detailed local smoke-test steps live in [Telegram Local Checklist](telegram-local-checklist.md).
-- Set `TELEGRAM_DEFAULT_FAMILY_ID` in backend `.env` to the demo seed family id before testing `/summary`.
-- Set `TELEGRAM_DEFAULT_ACCOUNT_ID` to the demo seed account id before testing manual text input.
-- This is a temporary MVP shortcut until Telegram users are linked to Family Cash Flow users/families in the database.
+Financial commands and callbacks work only in private chats. Webhook requests validate
+`X-Telegram-Bot-Api-Secret-Token` when configured; production requires the secret when the bot is
+enabled. There are no global family or account environment IDs.
 
 ## Implemented
 
-- Webhook skeleton: `POST /api/v1/telegram/webhook`.
-- Optional Telegram webhook secret verification.
-- Pure dispatcher for `/start` command, covered by tests.
-- Outgoing Telegram `sendMessage` client for dispatcher replies.
-- `/summary` command backed by `AnalyticsSummaryService` and `TELEGRAM_DEFAULT_FAMILY_ID`.
-- `/review` command lists latest `needs_review=true` transactions for `TELEGRAM_DEFAULT_FAMILY_ID`.
-- `/done <transaction_id>` command clears `needs_review` for one transaction in `TELEGRAM_DEFAULT_FAMILY_ID`.
-- `/review` inline buttons call `review_done:<transaction_id>` callbacks and reuse the same review-done service.
-- `/review` category buttons open a category picker and assign the selected category via callback.
-- Plain text like `АТБ 450 еда` creates a manual expense on `TELEGRAM_DEFAULT_ACCOUNT_ID`.
+- Webhook at `POST /api/v1/telegram/webhook`.
+- Authenticated Web link-token, link-status, and unlink endpoints.
+- Web Telegram account section that creates, opens, copies, refreshes, and revokes links.
+- `/start` linking using a hashed, expiring, one-time token.
+- `/summary` through the shared `AnalyticsSummaryService`.
+- `/review`, `/done`, category correction callbacks through shared
+  `TransactionReviewService`.
+- `/account` and family-scoped account selection.
+- Manual expense text such as `АТБ 450 еда` through `ManualTransactionService`, using Decimal and
+  an aware UTC timestamp.
+- Private-chat-only handling for financial commands; sender mapping uses numeric `from.id`.
+
+## Configuration
+
+Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (username without `@`), and
+`TELEGRAM_WEBHOOK_SECRET_TOKEN`. Never configure a family or account ID in Telegram environment
+settings. See [Telegram Local Checklist](telegram-local-checklist.md) for setup.
+
+## Remaining Work
+
+- Add manual income entry.
+- Decide whether to send notifications after cash withdrawals or budget thresholds.
+- Consider richer summaries and a Telegram Mini App after core workflows are stable.
+- Verify row-lock and conditional token consumption against live PostgreSQL.
+
+## Reference
+
+- https://core.telegram.org/bots/api
+- https://core.telegram.org/bots/features
