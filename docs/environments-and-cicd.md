@@ -54,6 +54,11 @@ The recommended required branch checks after reviewing branch protection are the
 `backend-tests`, `postgres-integration`, and `frontend`. This repository change does not alter GitHub
 branch protection settings.
 
+Verification: GitHub Actions run [37363137308](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37363137308)
+passed all three jobs on commit `d44217831d37df67e0ecc64df800046b507ca07c`, including PostgreSQL
+18.6 migrations and five marked integration tests. GitHub's admin-only logs permission denied the
+detailed logs; run and step conclusions were visible.
+
 ## Branching
 
 Перед первой реализацией создаем ветку `staging` от `main`.

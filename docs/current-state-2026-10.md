@@ -3,8 +3,9 @@
 The source-of-truth branch is `staging`. This task started from staging commit
 `afc8a82978c58e2237f14f672a25e7294e6ba016`, which includes the merged Web Import Review UI from
 `codex/web-import-review-ui`. The CI and PostgreSQL integration work is on the short-lived branch
-`codex/ci-postgres-integration`; `main` was not changed. This document records the staging
-implementation and the CI branch's verification status.
+`codex/ci-postgres-integration`, pushed at `d44217831d37df67e0ecc64df800046b507ca07c`; `main` was
+not changed. GitHub Actions run [37363137308](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37363137308)
+completed successfully for that commit.
 
 ## Verified Working Features
 
@@ -34,9 +35,9 @@ implementation and the CI branch's verification status.
   head, and refuses to run unless explicitly enabled. CI marks it required.
 - PostgreSQL integration cases exercise refresh-token rotation/replay/revocation and concurrent
   refresh; Telegram link-token replay, concurrency, and transaction rollback; import review and
-  confirmation with exact `Decimal` persistence; and PostgreSQL unique/FK constraints. Local
-  PostgreSQL is unavailable on this machine, so these cases skip locally; a successful hosted CI
-  run is needed before treating PostgreSQL behavior as verified.
+  confirmation with exact `Decimal` persistence; and PostgreSQL unique/FK constraints. All five
+  passed on GitHub Actions with PostgreSQL 18.6. Local PostgreSQL is unavailable on this machine,
+  so these cases skip locally.
 - `AGENTS.md` contains the repository's development constraints and read-before-edit documentation
   list.
 
@@ -47,7 +48,7 @@ implementation and the CI branch's verification status.
 | 0. Repo and branch setup | Complete | `main`, `staging`, and feature-branch workflow exist. This task branched from `staging`; no merge to `main`. |
 | 1. Monorepo skeleton | Complete | Backend, frontend, infra, and docs are present. |
 | 2. Backend skeleton | Complete | FastAPI app, health route, and pytest suite exist. |
-| 3. Database and migrations | Implemented; live verification pending | PostgreSQL Compose config, SQLAlchemy models, seeds, and a linear Alembic chain exist. Offline SQL generation passes. CI now performs a real upgrade and latest-revision downgrade/upgrade against PostgreSQL; its result must be checked after push. |
+| 3. Database and migrations | Implemented; verified on PostgreSQL 18.6 CI | PostgreSQL Compose config, SQLAlchemy models, seeds, and a linear Alembic chain exist. GitHub Actions migrated an empty service database to the single head, then downgraded the latest revision and upgraded to head again. Local server startup remains unavailable. |
 | 4. Auth MVP | Complete in code | Web login, refresh/logout, current user, persistent sessions, and authenticated family scope are implemented and covered by backend tests. |
 | 5. XLSX parser spike | Complete | Synthetic XLSX parser coverage and normalized bank-row handling exist. |
 | 6. Import preview backend | Complete | Draft creation, persistence, filters, errors, and duplicate candidates are implemented. |
@@ -59,7 +60,7 @@ implementation and the CI branch's verification status.
 | 12. Import UI | Complete in code | Upload → review/edit/bulk → account select → explicit confirmation is implemented. UI interaction against a live database remains unverified. |
 | 13. Operations and dashboard UI | Partial | Dashboard and review list are present; full transaction management, manual transaction, and cash-entry screens remain. |
 | 14. Budgets and notifications | Not started | Budget limits and warning/notification flows are absent. |
-| 15. DevOps MVP | Partial | Local Compose, a backend Dockerfile, and GitHub Actions checks exist. Docker image publishing and a verified deployment path are absent. The PostgreSQL workflow run is pending verification. |
+| 15. DevOps MVP | Partial | Local Compose, a backend Dockerfile, and green GitHub Actions checks exist. Docker image publishing and a verified deployment path are absent. |
 
 ## Incomplete Features
 
@@ -71,19 +72,17 @@ implementation and the CI branch's verification status.
 - Draft-expiration cleanup execution. Draft expiry metadata exists.
 - Frontend component/integration tests. Current Node tests cover API helpers and pure workflow
   logic, not rendered React interactions.
-- Docker image publishing and deployment automation. GitHub Actions CI is implemented, but its
-  hosted PostgreSQL job must complete successfully before PostgreSQL behavior is considered
-  verified.
+- Docker image publishing and deployment automation. GitHub Actions checks are green; no deploy was
+  run.
 - A consistent timezone policy for naive bank statement wall times versus timezone-aware Telegram
   manual transactions and reporting. Duplicate matching currently makes no timezone conversion
   assumption.
 
 ## Security Risks and Technical Debt
 
-- Local PostgreSQL `FOR UPDATE`, live Alembic upgrade/downgrade, and PostgreSQL-specific behavior
-  remain unverified because no PostgreSQL server is available on this machine. The dedicated CI job
-  is intended to verify those paths; SQLite results alone do not verify PostgreSQL locking or
-  constraints.
+- Local PostgreSQL startup remains unverified because no server is available on this machine.
+  PostgreSQL `FOR UPDATE`, migrations, and constraints passed the disposable PostgreSQL 18.6 CI
+  checks; this does not establish equivalence with production Cloud SQL settings or data.
 - Duplicate matching is conservative and exact: timestamp, signed amount, currency, normalized
   non-empty description, and instrument label when both sides have one. Changed bank text/time
   formatting can evade detection; no stable bank transaction ID is available in the imported format.
@@ -187,7 +186,9 @@ Commands were run in Windows PowerShell from the indicated directory:
 | `frontend` | `npm.cmd test` | **9 passed, 0 failed.** Node built-in test runner. |
 | `frontend` | `npm.cmd run build` | **Passed:** TypeScript and Vite; 2,209 modules transformed; JS 672.44 kB (193.00 kB gzip), CSS 17.91 kB. Vite emitted the >500 kB advisory. |
 | `backend` | `.venv\Scripts\python.exe -m pytest -m postgres tests\postgres -q` with `POSTGRES_INTEGRATION_REQUIRED=1` and URL unset | **5 setup errors, exit 1, as intended:** verified that the required integration job fails instead of silently skipping. |
-| repository root | `& .\backend\.venv\Scripts\python.exe -c "import yaml; p=yaml.load(open('.github/workflows/ci.yml', encoding='utf-8'), Loader=yaml.BaseLoader); assert len(p['jobs']) == 3; print('YAML parsed; jobs:', ', '.join(p['jobs']))"` | **Passed:** `backend-tests`, `postgres-integration`, and `frontend`. This checks YAML syntax, not GitHub Actions execution. |
+| repository root | `& .\backend\.venv\Scripts\python.exe -c "import yaml; p=yaml.load(open('.github/workflows/ci.yml', encoding='utf-8'), Loader=yaml.BaseLoader); assert len(p['jobs']) == 3; print('YAML parsed; jobs:', ', '.join(p['jobs']))"` | **Passed:** `backend-tests`, `postgres-integration`, and `frontend`. |
+| repository root | `gh run view 37363137308 --repo XanoSage/famaly-cash-flow --json status,conclusion,url,headSha,jobs` | **Passed:** commit `d44217831d37df67e0ecc64df800046b507ca07c`; all three jobs completed successfully. PostgreSQL readiness, single-head check, live upgrade, current revision, downgrade/upgrade, and the integration-test steps all succeeded. |
+| repository root | `gh run view 37363137308 --repo XanoSage/famaly-cash-flow --job 111942202864 --log` | **HTTP 403:** GitHub requires repository admin rights to download detailed logs. Job and step conclusions remained available from `gh run view`. |
 | repository root | `Get-Command docker,docker-compose,psql -ErrorAction SilentlyContinue`; `Test-NetConnection -ComputerName localhost -Port 5432 -InformationLevel Quiet`; same check on port 5433 | **No Docker/Compose/psql executable; both ports returned False.** |
 | repository root | `git diff --check` | **Passed**; Git displayed only its usual LF-to-CRLF working-copy notices. |
 | `frontend` | `npm.cmd run dev -- --host 127.0.0.1 --port 4173` and root `Invoke-WebRequest -Uri http://127.0.0.1:4173/ -UseBasicParsing` | Vite started and returned **HTTP 200**. This verifies dev-server startup/static response, not authenticated UI interaction. |
