@@ -8,7 +8,12 @@ from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
 from app.db.base import Base
-from app.importers.bank_xlsx import BankStatementParseResult, BankStatementSummary, ParsedBankOperation
+from app.db.seed_system_categories import seed_system_categories
+from app.importers.bank_xlsx import (
+    BankStatementParseResult,
+    BankStatementSummary,
+    ParsedBankOperation,
+)
 from app.models.family import Family
 from app.models.import_batch import ImportBatch, ImportPreviewRow
 from app.models.user import User
@@ -29,6 +34,7 @@ def db_session() -> Session:
 
 
 def test_import_preview_service_persists_batch_and_rows(db_session: Session) -> None:
+    seed_system_categories(db_session)
     family = Family(name="Test Family")
     user = User(
         family=family,
@@ -51,7 +57,8 @@ def test_import_preview_service_persists_batch_and_rows(db_session: Session) -> 
     assert saved_batch.status == "draft"
     assert saved_batch.source_filename == "statement.xlsx"
     assert saved_batch.total_rows == 2
-    assert saved_batch.savings_count == 1
+    # Summary counters are recomputed from preview rows, not stale parser metadata.
+    assert saved_batch.savings_count == 0
     assert saved_batch.expires_at is not None
 
     rows = db_session.scalars(
@@ -62,7 +69,7 @@ def test_import_preview_service_persists_batch_and_rows(db_session: Session) -> 
     assert len(rows) == 2
     assert rows[0].merchant_name == "Сільпо"
     assert rows[0].status == "auto_ready"
-    assert rows[1].reason_codes == ["person_transfer"]
+    assert rows[1].reason_codes == ["person_transfer", "uncategorized"]
     assert rows[1].status == "needs_review"
 
 

@@ -44,14 +44,26 @@ If deployment requires a cross-site cookie, configure `AUTH_COOKIE_SAMESITE=none
 
 ## Imports
 
-- `POST /imports/xlsx/preview` - загрузить XLSX и получить preview.
-- `POST /imports/xlsx/confirm` - подтвердить импорт выбранных операций.
-- `GET /imports` - список импортов.
-- `GET /imports/{id}` - детали импорта.
-- `GET /imports/{id}/preview-rows` - строки draft preview с фильтрами.
-- `PATCH /imports/{id}/preview-rows/{row_id}` - исправить одну preview-строку.
-- `POST /imports/{id}/bulk-actions` - массовое действие по preview-строкам.
-- `DELETE /imports/{id}` - удалить draft import.
+- `POST /imports/preview` - upload XLSX and create a persisted, categorized and duplicate-checked
+  draft preview. The current implementation returns the first page (default 50, maximum 200).
+- `GET /imports/{id}/preview` - retrieve the saved draft with `offset`, `limit`, `row_status`,
+  `reason_code`, `merchant`, `bank_category`, `proposed_category_id`, and `uncategorized_only`
+  filters. Summary status counters describe the full batch; `matching_rows_count` describes the
+  filtered result.
+- `PATCH /imports/{id}/preview/{row_id}` - update category/subcategory, flow, scope, merchant,
+  exclude/include-duplicate decision, or explicit uncategorized decision. Optional
+  `apply_to_merchant` extends the correction to matching rows in this draft; `save_rule` explicitly
+  creates/updates the Family's normalized exact-merchant rule.
+- `POST /imports/{id}/bulk-actions` - apply `assign_category`, `set_scope`, `set_flow_type`,
+  `exclude`, `include_duplicate`, `mark_uncategorized`, or `apply_correction` to selected `row_ids`.
+  Optional merchant-wide expansion and rule saving use the same fields as the row patch.
+- `POST /imports/{id}/confirm?account_id=...` - confirm the reviewed draft into Transactions.
+  Unresolved errors block; excluded rows and unaccepted duplicate candidates are skipped.
+
+All import routes derive Family from the authenticated User. Request schemas reject arbitrary status
+values and family IDs are not used as authorization inputs. Invalid/foreign row and category IDs
+return a validation error. The patch and bulk response include requested/matched/changed counts, a
+recomputed full-batch summary, and the affected preview rows.
 
 Preview должен возвращать:
 
@@ -61,7 +73,7 @@ Preview должен возвращать:
 - признак возможного дубля;
 - ошибки разбора.
 
-Confirm должен возвращать final summary:
+Confirm response and the confirmed ImportBatch retain final summary counters:
 
 - imported count;
 - excluded count;
@@ -70,6 +82,10 @@ Confirm должен возвращать final summary:
 - uncategorized count;
 - work/FOP count;
 - savings count.
+
+The saved import review markers are `reviewed_at`, `reviewed_uncategorized`, and
+`duplicate_included`. Duplicate matches to existing transactions return transaction summary data
+only after a Family-scoped lookup; same-file repeats return the first row number instead.
 
 ## Transactions
 

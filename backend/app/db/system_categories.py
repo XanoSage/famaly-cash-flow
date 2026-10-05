@@ -55,6 +55,12 @@ SYSTEM_CATEGORY_TREE: dict[str, list[str]] = {
     "Без категории / Другое": ["Без категории", "Другое"],
 }
 
+# Small, high-confidence mappings only. The category names are resolved against the
+# seeded taxonomy at runtime, never against production-specific IDs.
+SYSTEM_BANK_CATEGORY_MAPPINGS: dict[str, tuple[str, str]] = {
+    "Супермаркети та продукти": ("Еда", "Супермаркеты"),
+}
+
 
 def make_translation_key(*parts: str) -> str:
     normalized = "_".join(parts).lower()
@@ -67,4 +73,3 @@ def make_translation_key(*parts: str) -> str:
     for source, target in replacements.items():
         normalized = normalized.replace(source, target)
     return f"categories.{normalized}"
-

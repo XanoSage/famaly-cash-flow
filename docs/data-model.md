@@ -205,6 +205,8 @@ Fields:
 - `period_end`
 - `status`: `draft`, `confirmed`, `deleted`, `expired`
 - `total_rows`
+- `auto_ready_count`
+- `needs_review_count`
 - `imported_count`
 - `excluded_count`
 - `duplicate_count`
@@ -244,6 +246,9 @@ Fields:
 - `proposed_scope`
 - `confidence`
 - `duplicate_transaction_id`
+- `duplicate_included` - explicit user decision to import a matched duplicate candidate
+- `reviewed_uncategorized` - explicit decision to import without a category
+- `reviewed_at` - timestamp of a user review edit
 - `error_message`
 - `normalized_payload`
 - `created_at`

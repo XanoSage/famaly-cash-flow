@@ -211,6 +211,44 @@ Preview сохраняется как draft import в базе.
 - draft можно удалить вручную;
 - исходный XLSX как файл не хранится.
 
+## Implemented backend review contract
+
+The backend stores review decisions on the preview row and exposes these authenticated,
+Family-scoped routes (the Family always comes from the current User):
+
+- `POST /api/v1/imports/preview` parses XLSX, applies system/family rules, checks existing
+  same-Family Transactions and repeated rows in the file, and returns a paginated preview.
+- `GET /api/v1/imports/{batch_id}/preview` retrieves the saved preview. It supports pagination and
+  filters `row_status`, `reason_code`, `merchant`, `bank_category`, `proposed_category_id`, and
+  `uncategorized_only`. `total_rows` is the full batch size, `matching_rows_count` is the filtered
+  row count, and status summary counters describe the full batch.
+- `PATCH /api/v1/imports/{batch_id}/preview/{row_id}` edits one row. Accepted fields are
+  `proposed_category_id`, `proposed_subcategory_id`, `proposed_flow_type`, `proposed_scope`,
+  `merchant_name`, `excluded`, `include_duplicate`, and `accept_uncategorized`. `apply_to_merchant`
+  applies those values to matching normalized merchant names in this draft only. `save_rule` opts
+  into creating/updating an exact merchant rule for future imports.
+- `POST /api/v1/imports/{batch_id}/bulk-actions` accepts `row_ids`, `action`, optional proposed
+  fields, and optional `apply_to_merchant` / `save_rule`. Actions are `assign_category`, `set_scope`,
+  `set_flow_type`, `exclude`, `include_duplicate`, `mark_uncategorized`, and `apply_correction`.
+  Returned counts distinguish requested IDs, rows matched in the draft, and rows changed.
+- `POST /api/v1/imports/{batch_id}/confirm?account_id=...` creates Transactions from the reviewed
+  state. It rejects batches outside the caller's Family, non-drafts, and unresolved error rows. An
+  excluded parse-error row no longer blocks confirmation. Excluded rows and unresolved duplicate
+  candidates are skipped; a duplicate candidate is imported only after explicit inclusion. A
+  second confirmation is rejected because the batch is already confirmed.
+
+Category IDs must refer to a system-global or caller-Family Category. A subcategory must belong to
+the selected category. Foreign draft IDs and row IDs from a different draft are rejected. Parse-error
+date/amount/source values cannot yet be edited; those rows can be excluded. The response returns
+category/subcategory IDs and names, proposed flow/scope, review markers, duplicate row/transaction
+metadata, and an existing-transaction summary only when that transaction belongs to the caller's
+Family.
+
+An explicit uncategorized choice sets `reviewed_uncategorized = true`; a null category by itself
+still means the row has not been consciously accepted without a category. Duplicate inclusion is
+stored separately from the factual `duplicate` reason. Review edits recompute statuses and counters
+from the stored rows rather than trusting parser summary values.
+
 ## Re-Uploading Same File
 
 Если пользователь загружает тот же XLSX второй раз, сервис:

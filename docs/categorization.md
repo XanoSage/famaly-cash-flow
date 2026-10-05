@@ -73,6 +73,38 @@
 - `Еда / Кофе и перекусы` определяется по продавцу и сумме как подсказке. Пользователь может исправить и сохранить правило.
 - Рестораны/кафе в отпуске или на событиях в MVP отмечаются комментарием. Теги добавляются позже.
 
+## Deterministic import-review engine
+
+The backend applies active rules while building the persisted XLSX preview. Supported rule types are:
+
+- `merchant`: exact match against the NFKC-normalized, whitespace-collapsed, case-folded merchant
+  text. A `Merchant` row is not required before confirmation.
+- `bank_category`: exact match against normalized bank-category text (`bank_category` is preferred;
+  `pattern` is accepted for older rows).
+- `keyword`: normalized `pattern` must occur in the description or merchant text.
+
+System rules have `family_id = null`; user corrections are family-specific and are only loaded for
+that Family. Higher numeric `priority` wins independently for each output field. The seeded
+`Супермаркети та продукти` mapping has priority 100 and resolves through the seeded `Еда` /
+`Супермаркеты` taxonomy rows. Saved exact-merchant corrections use priority 300. Keyword rules can
+use priority 200. These are defaults, not reserved priority bands.
+
+Rules may propose category, subcategory, flow type, and scope. A rule that omits a field does not
+replace that field. If equally highest-priority matching rules disagree on a field, the engine
+leaves that field unresolved and adds `rule_conflict`. Equal-priority rules with the same value do
+not conflict. A lower-priority subcategory that belongs to a different, higher-priority category is
+ignored; an equally or more authoritative incompatible subcategory produces `rule_conflict`.
+
+The system bank-category rules are seeded idempotently by
+`python -m app.db.seed_system_categories` after their Category/Subcategory rows exist. The initial
+mapping set is deliberately small; it currently includes the documented supermarket/groceries
+example, not a broad bank taxonomy.
+
+During import review, `save_rule: true` explicitly creates or updates one family-specific exact
+merchant rule. It is never implicit on row edits, bulk actions, or confirmation. An existing
+equivalent rule is reused; extra active equivalents are deactivated. Draft preview does not create
+Merchant records.
+
 ## Без категории
 
 Операцию можно оставить без категории, чтобы не блокировать импорт. Но такие операции должны:

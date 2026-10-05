@@ -5,7 +5,17 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, created_at, updated_at, uuid_pk
@@ -28,6 +38,8 @@ class ImportBatch(Base):
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     total_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    auto_ready_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    needs_review_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     imported_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     excluded_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duplicate_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -49,7 +61,11 @@ class ImportBatch(Base):
 
 class ImportPreviewRow(Base):
     __tablename__ = "import_preview_rows"
-    __table_args__ = (UniqueConstraint("import_batch_id", "row_number", name="uq_import_preview_rows_batch_id_row_number"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "import_batch_id", "row_number", name="uq_import_preview_rows_batch_id_row_number"
+        ),
+    )
 
     id: Mapped[uuid_pk]
     import_batch_id: Mapped[UUID] = mapped_column(ForeignKey("import_batches.id"), nullable=False)
@@ -66,12 +82,21 @@ class ImportPreviewRow(Base):
     bank_category_raw: Mapped[str | None] = mapped_column(String(160), nullable=True)
     description_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
     merchant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    proposed_category_id: Mapped[UUID | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
-    proposed_subcategory_id: Mapped[UUID | None] = mapped_column(ForeignKey("subcategories.id"), nullable=True)
+    proposed_category_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("categories.id"), nullable=True
+    )
+    proposed_subcategory_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subcategories.id"), nullable=True
+    )
     proposed_flow_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     proposed_scope: Mapped[str | None] = mapped_column(String(64), nullable=True)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
-    duplicate_transaction_id: Mapped[UUID | None] = mapped_column(ForeignKey("transactions.id"), nullable=True)
+    duplicate_transaction_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("transactions.id"), nullable=True
+    )
+    duplicate_included: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reviewed_uncategorized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     normalized_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[created_at]
@@ -79,5 +104,9 @@ class ImportPreviewRow(Base):
 
     import_batch: Mapped["ImportBatch"] = relationship(back_populates="preview_rows")
     proposed_category: Mapped["Category | None"] = relationship(foreign_keys=[proposed_category_id])
-    proposed_subcategory: Mapped["Subcategory | None"] = relationship(foreign_keys=[proposed_subcategory_id])
-    duplicate_transaction: Mapped["Transaction | None"] = relationship(foreign_keys=[duplicate_transaction_id])
+    proposed_subcategory: Mapped["Subcategory | None"] = relationship(
+        foreign_keys=[proposed_subcategory_id]
+    )
+    duplicate_transaction: Mapped["Transaction | None"] = relationship(
+        foreign_keys=[duplicate_transaction_id]
+    )

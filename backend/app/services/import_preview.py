@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.importers.bank_xlsx import BankStatementParseResult, parse_bank_xlsx
 from app.models.import_batch import ImportBatch, ImportPreviewRow
 from app.models.user import User
+from app.services.import_review import ImportReviewService
 
 DRAFT_IMPORT_TTL_DAYS = 7
 
@@ -94,10 +95,19 @@ class ImportPreviewService:
                     proposed_scope=row.proposed_scope,
                     confidence=row.confidence,
                     error_message=row.error_message,
-                    normalized_payload=row.normalized_payload,
+                    normalized_payload={
+                        **row.normalized_payload,
+                        "base_reason_codes": list(row.reason_codes),
+                        "rule_conflict_fields": [],
+                    },
                 )
                 for row in parsed_statement.rows
             ]
+        )
+        self.db.flush()
+        ImportReviewService(self.db).prepare_preview(
+            family_id=family_id,
+            import_batch_id=import_batch.id,
         )
         self.db.commit()
         self.db.refresh(import_batch)
