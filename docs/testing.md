@@ -20,6 +20,28 @@ Frontend:
 - В репозитории можно хранить synthetic sample.
 - Реальные sanitized XLSX-файлы не хранятся в Git.
 
+## PostgreSQL integration tests
+
+The default `python -m pytest -q` suite uses its existing SQLite fixtures and skips the tests under
+`backend/tests/postgres` unless explicitly enabled. These tests use a real PostgreSQL database and
+cover refresh-token rotation/concurrency, Telegram link-token consumption/concurrency/rollback,
+import review and confirmation with Decimal persistence, and PostgreSQL unique/FK constraints.
+
+The PostgreSQL fixture requires all of the following:
+
+- `RUN_POSTGRES_INTEGRATION=1`;
+- `POSTGRES_INTEGRATION_DATABASE_URL` with a PostgreSQL driver;
+- a database name ending in `_integration_test`;
+- exactly one Alembic head, with the database already migrated to that head.
+
+Each test truncates application tables in that database. Use a disposable test database only; never
+point this URL at development, staging, or production data. CI sets `POSTGRES_INTEGRATION_REQUIRED=1`
+so missing connection settings fail the job instead of silently skipping the integration tests.
+GitHub Actions provisions PostgreSQL 18.6, upgrades the live database, downgrades the newest
+revision and upgrades it again, then runs the marked integration suite. See
+[`current-state-2026-10.md`](current-state-2026-10.md) for local commands and the verified run
+results.
+
 ## Что тестировать в первую очередь
 
 ### XLSX parser

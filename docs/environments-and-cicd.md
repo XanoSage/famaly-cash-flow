@@ -34,14 +34,25 @@
 
 ## CI/CD MVP
 
-GitHub Actions:
+The check-only workflow is `.github/workflows/ci.yml`. It runs on pushes and pull requests targeting
+`staging`, `feature/**`, and `codex/**` and has three jobs:
 
-- backend tests;
-- frontend build;
-- Docker image build;
-- deploy backend to Cloud Run staging при push/merge в `staging`;
-- deploy frontend to Firebase Hosting staging;
-- production deploy запускается вручную.
+- backend fast tests using the existing SQLite fixtures, dependency consistency, and Ruff checks on
+  changed Python files only (`E`, `F`, `I` plus format check);
+- PostgreSQL 18.6 integration tests against a dedicated disposable database, with a real Alembic
+  upgrade, newest-revision downgrade/upgrade, and tests for auth refresh, Telegram identity linking,
+  import confirmation/Decimal persistence, and PostgreSQL constraints;
+- locked frontend install (`npm ci`), frontend tests, and TypeScript/Vite production build.
+
+The PostgreSQL job waits for the service health check and a `pg_isready` probe. It requires its
+integration flag and database URL. Its test fixture verifies a
+database name ending in `_integration_test`, and truncates application data before each test. Do not
+use a local development or shared database for this suite. The workflow does not publish images or
+deploy to Cloud Run/Firebase; those remain separate DevOps work.
+
+The recommended required branch checks after reviewing branch protection are the workflow jobs
+`backend-tests`, `postgres-integration`, and `frontend`. This repository change does not alter GitHub
+branch protection settings.
 
 ## Branching
 
