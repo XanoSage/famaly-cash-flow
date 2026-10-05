@@ -20,13 +20,214 @@ export type TelegramLinkToken = {
   telegram_url: string | null;
 };
 
+export type CategoryApiSubcategory = {
+  id: string;
+  category_id: string;
+  name: string;
+  translation_key: string | null;
+  is_system: boolean;
+};
+
+export type CategoryApiRow = {
+  id: string;
+  family_id: string | null;
+  name: string;
+  translation_key: string | null;
+  is_system: boolean;
+  subcategories: CategoryApiSubcategory[];
+};
+
+export type CategoryListResponse = { rows: CategoryApiRow[] };
+
+export type Account = {
+  id: string;
+  name: string;
+  type: string;
+  currency: string;
+  is_active: boolean;
+  owner_user_id: string | null;
+  is_default: boolean;
+};
+
+export type AccountListResponse = { rows: Account[] };
+
+export type ImportRowStatus =
+  | "auto_ready"
+  | "needs_review"
+  | "duplicate_candidate"
+  | "excluded"
+  | "error";
+
+export type ImportSummary = {
+  import_batch_id: string;
+  source_filename: string;
+  status: string;
+  period_start: string | null;
+  period_end: string | null;
+  total_rows: number;
+  matching_rows_count: number;
+  returned_rows: number;
+  offset: number;
+  limit: number;
+  auto_ready_count: number;
+  needs_review_count: number;
+  imported_count: number;
+  excluded_count: number;
+  duplicate_count: number;
+  error_count: number;
+  uncategorized_count: number;
+  work_fop_count: number;
+  savings_count: number;
+  parser_version: string;
+  mapping_version: string;
+  expires_at: string | null;
+};
+
+export type MatchedDuplicate = {
+  transaction_id: string;
+  occurred_at: string;
+  amount: string;
+  currency: string;
+  description: string | null;
+  merchant_name: string | null;
+  category_name: string | null;
+  import_batch_id: string | null;
+};
+
+export type ImportPreviewRow = {
+  id: string;
+  row_number: number;
+  status: ImportRowStatus;
+  reason_codes: string[];
+  occurred_at: string | null;
+  amount: string | null;
+  currency: string | null;
+  transaction_amount: string | null;
+  transaction_currency: string | null;
+  balance_after: string | null;
+  payment_instrument_label: string | null;
+  bank_category_raw: string | null;
+  description_raw: string | null;
+  merchant_name: string | null;
+  proposed_category_id: string | null;
+  proposed_category_name: string | null;
+  proposed_subcategory_id: string | null;
+  proposed_subcategory_name: string | null;
+  proposed_flow_type: string | null;
+  proposed_scope: string | null;
+  confidence: string | null;
+  duplicate_transaction_id: string | null;
+  duplicate_of_row_number: number | null;
+  duplicate_included: boolean;
+  reviewed_uncategorized: boolean;
+  reviewed_at: string | null;
+  matched_duplicate: MatchedDuplicate | null;
+  error_message: string | null;
+  normalized_payload: Record<string, unknown>;
+};
+
+export type ImportPreviewResponse = {
+  summary: ImportSummary;
+  rows: ImportPreviewRow[];
+};
+
+export type ImportPreviewFilters = {
+  offset?: number;
+  limit?: number;
+  row_status?: ImportRowStatus;
+  reason_code?: string;
+  merchant?: string;
+  bank_category?: string;
+  proposed_category_id?: string;
+  uncategorized_only?: boolean;
+};
+
+export type ImportPreviewRowPatch = {
+  proposed_category_id?: string | null;
+  proposed_subcategory_id?: string | null;
+  proposed_flow_type?: ImportFlowType | null;
+  proposed_scope?: ImportScope | null;
+  merchant_name?: string | null;
+  excluded?: boolean;
+  include_duplicate?: boolean;
+  accept_uncategorized?: boolean;
+  save_rule?: boolean;
+  apply_to_merchant?: boolean;
+};
+
+export type ImportFlowType =
+  | "purchase"
+  | "cash_withdrawal"
+  | "cash_expense"
+  | "transfer_to_own_account"
+  | "transfer_to_savings"
+  | "transfer_to_wife"
+  | "person_transfer"
+  | "requisites_payment"
+  | "refund"
+  | "income"
+  | "subscription"
+  | "work_fop"
+  | "other";
+
+export type ImportScope = "family" | "personal_main_user" | "work_fop";
+
+export type ImportBulkAction =
+  | "assign_category"
+  | "set_scope"
+  | "set_flow_type"
+  | "exclude"
+  | "include_duplicate"
+  | "mark_uncategorized"
+  | "apply_correction";
+
+export type ImportBulkActionRequest = ImportPreviewRowPatch & {
+  action: ImportBulkAction;
+  row_ids: string[];
+};
+
+export type ImportReviewSummary = {
+  import_batch_id: string;
+  status: string;
+  total_rows: number;
+  auto_ready_count: number;
+  needs_review_count: number;
+  imported_count: number;
+  excluded_count: number;
+  duplicate_count: number;
+  error_count: number;
+  uncategorized_count: number;
+  work_fop_count: number;
+  savings_count: number;
+};
+
+export type ImportReviewActionResponse = {
+  requested_count: number;
+  matched_count: number;
+  changed_count: number;
+  summary: ImportReviewSummary;
+  rows: ImportPreviewRow[];
+};
+
+export type ConfirmImportResponse = {
+  import_batch_id: string;
+  status: string;
+  created_transactions: number;
+  excluded_count: number;
+  duplicate_count: number;
+  error_count: number;
+  uncategorized_count: number;
+  work_fop_count: number;
+  savings_count: number;
+};
+
 type AccessTokenResponse = {
   access_token: string;
   token_type: string;
   expires_in: number;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 let accessToken: string | null = null;
 let refreshInFlight: Promise<string | null> | null = null;
 
@@ -151,6 +352,103 @@ export async function deleteTelegramLink(): Promise<void> {
   if (!response.ok) {
     throw new Error(await responseError(response, "Could not unlink Telegram."));
   }
+}
+
+export async function getCategories(): Promise<CategoryListResponse> {
+  const response = await authenticatedFetch(apiUrl("/categories"));
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not load categories."));
+  }
+  return (await response.json()) as CategoryListResponse;
+}
+
+export async function getAccounts(): Promise<AccountListResponse> {
+  const response = await authenticatedFetch(apiUrl("/accounts"));
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not load accounts."));
+  }
+  return (await response.json()) as AccountListResponse;
+}
+
+export async function uploadImportPreview(file: File, limit = 50): Promise<ImportPreviewResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const url = apiUrl("/imports/preview");
+  url.searchParams.set("preview_limit", String(limit));
+  const response = await authenticatedFetch(url, { method: "POST", body: form });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not upload this statement."));
+  }
+  return (await response.json()) as ImportPreviewResponse;
+}
+
+export async function getImportPreview(
+  importBatchId: string,
+  filters: ImportPreviewFilters = {},
+): Promise<ImportPreviewResponse> {
+  const url = apiUrl(`/imports/${encodeURIComponent(importBatchId)}/preview`);
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "" && value !== false) {
+      url.searchParams.set(key, String(value));
+    } else if (value === false && key === "uncategorized_only") {
+      url.searchParams.set(key, "false");
+    }
+  }
+  const response = await authenticatedFetch(url);
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not load the import preview."));
+  }
+  return (await response.json()) as ImportPreviewResponse;
+}
+
+export async function patchImportPreviewRow(
+  importBatchId: string,
+  rowId: string,
+  payload: ImportPreviewRowPatch,
+): Promise<ImportReviewActionResponse> {
+  const response = await authenticatedFetch(
+    apiUrl(`/imports/${encodeURIComponent(importBatchId)}/preview/${encodeURIComponent(rowId)}`),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not save this row."));
+  }
+  return (await response.json()) as ImportReviewActionResponse;
+}
+
+export async function executeImportBulkAction(
+  importBatchId: string,
+  payload: ImportBulkActionRequest,
+): Promise<ImportReviewActionResponse> {
+  const response = await authenticatedFetch(
+    apiUrl(`/imports/${encodeURIComponent(importBatchId)}/bulk-actions`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not apply this bulk action."));
+  }
+  return (await response.json()) as ImportReviewActionResponse;
+}
+
+export async function confirmImport(
+  importBatchId: string,
+  accountId: string,
+): Promise<ConfirmImportResponse> {
+  const url = apiUrl(`/imports/${encodeURIComponent(importBatchId)}/confirm`);
+  url.searchParams.set("account_id", accountId);
+  const response = await authenticatedFetch(url, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not confirm this import."));
+  }
+  return (await response.json()) as ConfirmImportResponse;
 }
 
 async function responseError(response: Response, fallback: string): Promise<string> {
