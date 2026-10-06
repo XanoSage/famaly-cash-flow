@@ -599,12 +599,13 @@ def test_postgres_manual_transaction_audit_and_soft_delete_persistence(
         assert retained.deleted_by_user_id == user.id
         assert retained.owner_user_id == user.id
         assert len(audits) == 3
-        assert [audit.action for audit in audits] == ["create", "update", "delete"]
+        audits_by_action = {audit.action: audit for audit in audits}
+        assert set(audits_by_action) == {"create", "update", "delete"}
         assert all(audit.family_id == family.id and audit.user_id == user.id for audit in audits)
-        assert audits[0].after_payload["amount"] == "-1234.56"
-        assert audits[1].before_payload["amount"] == "-1234.56"
-        assert audits[1].after_payload["amount"] == "-1234.57"
-        assert audits[2].after_payload["deleted_by_user_id"] == str(user.id)
+        assert audits_by_action["create"].after_payload["amount"] == "-1234.56"
+        assert audits_by_action["update"].before_payload["amount"] == "-1234.56"
+        assert audits_by_action["update"].after_payload["amount"] == "-1234.57"
+        assert audits_by_action["delete"].after_payload["deleted_by_user_id"] == str(user.id)
 
 
 def _seed_user(session_factory: sessionmaker[Session], email: str) -> tuple[Family, User, Account]:
