@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analytics.summary import TRANSFER_FLOW_TYPES
+from app.analytics.transfer_semantics import TRANSFER_FLOW_TYPES
 from app.models.transaction import Transaction
 
 
@@ -73,7 +73,9 @@ class SavingsAnalyticsService:
             expense_count=sum(row.expense_count for row in rows),
             savings_to_expenses_percent=_percent(total_savings, total_expenses),
             average_daily_savings=average_daily_savings,
-            projected_yearly_savings=(average_daily_savings * Decimal(365)).quantize(Decimal("0.01")),
+            projected_yearly_savings=(average_daily_savings * Decimal(365)).quantize(
+                Decimal("0.01")
+            ),
             period_days=period_days,
             rows=rows,
         )

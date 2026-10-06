@@ -85,6 +85,9 @@ Fields:
 - `currency`: `UAH`
 - `is_active`
 
+Cash Ledger uses one active, family-owned UAH cash account as an approximate wallet. A partial
+unique index prevents multiple active cash wallets for one family.
+
 ## PaymentInstrument
 
 Физический способ доступа к account: физическая карта, виртуальная карта, token.
@@ -121,6 +124,8 @@ Fields:
 - `balance_after`
 - `direction`: `expense`, `income`, `transfer`
 - `flow_type`: `purchase`, `cash_withdrawal`, `cash_expense`, `transfer_to_own_account`, `transfer_to_savings`, `transfer_to_wife`, `person_transfer`, `requisites_payment`, `refund`, `income`, `subscription`, `work_fop`, `other`
+- `transfer_group_id`, `transfer_role`: nullable pair metadata for linked cash-withdrawal legs;
+  role is `source` or `destination`, with a unique group/role constraint and a direction/sign check
 - `income_type`: `income`, `refund`, `own_transfer`, `debt`, `other`
 - `scope`: `family`, `personal_main_user`, `work_fop`
 - `description_raw`

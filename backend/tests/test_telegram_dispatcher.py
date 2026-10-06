@@ -93,6 +93,21 @@ def test_income_command_is_dispatched_to_the_linked_private_chat_text_handler() 
     assert replies == [BotReply(chat_id=42, text="Income saved")]
 
 
+def test_cash_command_is_dispatched_to_the_linked_private_chat_text_handler() -> None:
+    context = _context()
+    received: list[tuple[TelegramRequestContext, str]] = []
+    replies = dispatch_update(
+        _update("/cash 450 Рынок"),
+        context_resolver=lambda *_: context,
+        text_message_provider=lambda actual, text: (
+            received.append((actual, text)) or "Cash expense saved"
+        ),
+    )
+
+    assert received == [(context, "/cash 450 Рынок")]
+    assert replies == [BotReply(chat_id=42, text="Cash expense saved")]
+
+
 def test_sensitive_group_command_returns_only_private_chat_instruction() -> None:
     called = False
 

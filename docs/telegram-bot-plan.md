@@ -7,7 +7,8 @@ deep transaction review, settings, detailed analytics, and Telegram account link
 
 Telegram supports:
 
-- quick manual expense entry (income entry is a follow-up);
+- quick manual expense and income entry;
+- cash expenses through `/cash <amount> <description>`;
 - short summaries;
 - a review queue with mark-reviewed and category assignment actions;
 - selecting a persisted default account.
@@ -35,6 +36,9 @@ enabled. There are no global family or account environment IDs.
 - `/review`, `/done`, category correction callbacks through shared
   `TransactionReviewService`.
 - `/account` and family-scoped account selection.
+- `/cash 450 Рынок` records an ordinary cash expense through the shared `TransactionService` and
+  replies with the approximate wallet balance. If the family wallet does not exist, the bot directs
+  the user to create it in Web; Telegram does not create accounts.
 - Manual expense text such as `АТБ 450 еда` through `ManualTransactionService`, using Decimal and
   an aware UTC timestamp.
 - Private-chat-only handling for financial commands; sender mapping uses numeric `from.id`.
@@ -47,10 +51,10 @@ settings. See [Telegram Local Checklist](telegram-local-checklist.md) for setup.
 
 ## Remaining Work
 
-- Add manual income entry.
 - Decide whether to send notifications after cash withdrawals or budget thresholds.
 - Consider richer summaries and a Telegram Mini App after core workflows are stable.
-- Verify row-lock and conditional token consumption against live PostgreSQL.
+- Verify Telegram webhook interaction against a live Bot API; automated tests use no external
+  Telegram service.
 
 ## Reference
 

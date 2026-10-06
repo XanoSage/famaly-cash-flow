@@ -4,6 +4,7 @@ from app.api.routes import (
     accounts,
     analytics,
     auth,
+    cash,
     categories,
     health,
     imports,
@@ -16,6 +17,7 @@ api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(accounts.router, tags=["accounts"])
 api_router.include_router(analytics.router, tags=["analytics"])
 api_router.include_router(categories.router, tags=["categories"])
+api_router.include_router(cash.router, tags=["cash"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(imports.router, tags=["imports"])
 api_router.include_router(telegram.router, tags=["telegram"])

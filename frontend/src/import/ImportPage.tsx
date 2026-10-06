@@ -199,9 +199,12 @@ export function ImportPage({
       try {
         const result = await getAccounts();
         if (cancelled) return;
-        setAccounts(result.rows);
-        const preferred = result.rows.find((account) => account.is_default) ??
-          (result.rows.length === 1 ? result.rows[0] : undefined);
+        const eligibleAccounts = result.rows.filter(
+          (account) => account.is_active && account.type !== "cash",
+        );
+        setAccounts(eligibleAccounts);
+        const preferred = eligibleAccounts.find((account) => account.is_default) ??
+          (eligibleAccounts.length === 1 ? eligibleAccounts[0] : undefined);
         setSelectedAccountId(preferred?.id ?? "");
         setAccountListLoaded(true);
       } catch (error) {

@@ -21,7 +21,7 @@ LINK_FAILURE_TEXT = (
 )
 START_TEXT = (
     "Чтобы начать, войдите в Family Cash Flow Web и создайте ссылку в разделе Telegram.\n\n"
-    "Доступны команды: /summary, /review, /account и /income 25000 Зарплата."
+    "Доступны команды: /summary, /review, /account, /income 25000 Зарплата и /cash 450 Рынок."
 )
 
 

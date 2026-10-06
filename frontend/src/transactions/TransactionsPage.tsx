@@ -4,6 +4,7 @@ import {
   deleteTransaction,
   getAccounts,
   getCategories,
+  linkImportedCashWithdrawal,
   listTransactions,
   updateTransaction,
   type Account,
@@ -107,6 +108,8 @@ const copy = {
     personalScope: "Личное",
     workScope: "ФОП",
     commentColumn: "Комментарий",
+    linkCashWithdrawal: "Связать с наличными",
+    cashWalletNeeded: "Сначала создайте кошелёк в разделе «Наличные»",
   },
   uk: {
     title: "Операції",
@@ -171,6 +174,8 @@ const copy = {
     personalScope: "Особисте",
     workScope: "ФОП",
     commentColumn: "Коментар",
+    linkCashWithdrawal: "Пов’язати з готівкою",
+    cashWalletNeeded: "Спочатку створіть гаманець у розділі «Готівка»",
   },
 } satisfies Record<Locale, Record<string, string>>;
 
@@ -210,6 +215,7 @@ const flowLabels: Record<Locale, Record<string, string>> = {
 export function TransactionsPage({ locale, onAuthFailure, onTransactionsChanged }: Props) {
   const t = copy[locale];
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [cashWalletReady, setCashWalletReady] = useState(false);
   const [categories, setCategories] = useState<CategoryApiRow[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
@@ -232,6 +238,7 @@ export function TransactionsPage({ locale, onAuthFailure, onTransactionsChanged 
       .then(([accountResponse, categoryResponse]) => {
         if (!active) return;
         setAccounts(accountResponse.rows.filter((account) => account.is_active));
+        setCashWalletReady(accountResponse.rows.some((account) => account.is_active && account.type === "cash"));
         setCategories(categoryResponse.rows);
         setOptionsError(null);
       })
@@ -322,6 +329,20 @@ export function TransactionsPage({ locale, onAuthFailure, onTransactionsChanged 
     setError(null);
     try {
       await deleteTransaction(transaction.id);
+      await refreshAfterMutation(offset);
+    } catch (mutationError) {
+      onAuthFailure(mutationError);
+      setError(errorMessage(mutationError, t.mutationError));
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  async function linkCashWithdrawal(transaction: TransactionRow) {
+    setRowBusy(transaction.id);
+    setError(null);
+    try {
+      await linkImportedCashWithdrawal(transaction.id);
       await refreshAfterMutation(offset);
     } catch (mutationError) {
       onAuthFailure(mutationError);
@@ -422,6 +443,8 @@ export function TransactionsPage({ locale, onAuthFailure, onTransactionsChanged 
               locale={locale}
               onDelete={() => void removeTransaction(row)}
               onEdit={() => { setEditing(row); setEditorOpen(true); }}
+              onLinkCash={() => void linkCashWithdrawal(row)}
+              cashWalletReady={cashWalletReady}
               row={row}
               t={t}
               busy={rowBusy === row.id}
@@ -452,7 +475,7 @@ export function TransactionsPage({ locale, onAuthFailure, onTransactionsChanged 
 }
 
 function TransactionTableRow({
-  row, locale, t, busy, onEdit, onDelete,
+  row, locale, t, busy, onEdit, onDelete, onLinkCash, cashWalletReady,
 }: {
   row: TransactionRow;
   locale: Locale;
@@ -460,6 +483,8 @@ function TransactionTableRow({
   busy: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onLinkCash: () => void;
+  cashWalletReady: boolean;
 }) {
   const directionName = row.direction === "income" ? t.incomes : row.direction === "transfer" ? t.transfer : t.expenses;
   return (
@@ -476,6 +501,11 @@ function TransactionTableRow({
       <b className={row.amount.startsWith("-") ? "amount-negative" : "amount-positive"}>{formatTransactionAmount(row.amount, row.currency, locale)}</b>
       <div className="full-transaction-actions">
         {row.direction !== "transfer" && <button className="review-button" disabled={busy} onClick={onEdit} type="button">{t.edit}</button>}
+        {row.flow_type === "cash_withdrawal" && row.import_batch_id && !row.transfer_group_id && (
+          cashWalletReady
+            ? <button className="review-button" disabled={busy} onClick={onLinkCash} type="button">{busy ? "…" : t.linkCashWithdrawal}</button>
+            : <small className="cash-link-needed">{t.cashWalletNeeded}</small>
+        )}
         <button className="secondary-button danger-button" disabled={busy} onClick={onDelete} type="button">{busy ? "…" : t.remove}</button>
       </div>
     </article>

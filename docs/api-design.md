@@ -157,9 +157,15 @@ batches are checked against that family.
 
 ## Cash
 
-- `GET /cash/summary` - приблизительный наличный баланс.
-- `POST /cash/expenses` - добавить наличный расход.
-- `POST /cash/transfers` - зафиксировать снятие наличных.
+- `GET /cash/summary` - wallet, approximate balance, and recent cash operations.
+- `POST /accounts/cash-wallet` - idempotently create/get the family's active UAH cash wallet.
+- `POST /cash/expenses` - add a cash expense through `TransactionService`.
+- `POST /cash/transfers` - create paired source/destination legs for a manual withdrawal.
+- `POST /cash/imported-withdrawals/{transaction_id}/link` - retain an imported ATM row as the
+  source and create only its cash-wallet counterpart.
+
+Linked withdrawal legs are omitted from income/expense analytics and counted once as a family
+transfer. Soft deletion applies to both legs atomically; generic edits are blocked.
 
 ## Budgets
 

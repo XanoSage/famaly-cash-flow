@@ -8,14 +8,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.analytics.transfer_semantics import TRANSFER_FLOW_TYPES, counts_as_transfer_metric
 from app.models.transaction import Transaction
-
-TRANSFER_FLOW_TYPES = {
-    "transfer_to_own_account",
-    "transfer_to_savings",
-    "transfer_to_wife",
-    "person_transfer",
-}
 
 
 @dataclass(frozen=True)
@@ -57,12 +51,20 @@ class AnalyticsSummaryService:
             scope=scope,
         )
 
-        income_transactions = [item for item in transactions if item.direction == "income"]
-        saving_transactions = [item for item in transactions if item.flow_type == "transfer_to_savings"]
+        income_transactions = [
+            item
+            for item in transactions
+            if item.direction == "income" and item.flow_type not in TRANSFER_FLOW_TYPES
+        ]
+        saving_transactions = [
+            item for item in transactions if item.flow_type == "transfer_to_savings"
+        ]
         transfer_transactions = [
             item
             for item in transactions
-            if item.flow_type in TRANSFER_FLOW_TYPES and item.flow_type != "transfer_to_savings"
+            if item.flow_type in TRANSFER_FLOW_TYPES
+            and item.flow_type != "transfer_to_savings"
+            and counts_as_transfer_metric(item, account_filter=account_id)
         ]
         expense_transactions = [
             item

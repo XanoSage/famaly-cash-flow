@@ -8,6 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
+from app.models.user import UserPreference
 from app.services.import_review import normalize_review_text
 from app.services.transactions import TransactionService, TransactionServiceError
 from app.telegram_bot.context import TelegramRequestContext
@@ -15,12 +16,22 @@ from app.telegram_bot.context import TelegramRequestContext
 MANUAL_SELECT_ACCOUNT_TEXT = "Сначала выбери активный счёт командой /account."
 MANUAL_PARSE_USAGE_TEXT = "Напиши операцию в формате: АТБ 450 еда"
 MANUAL_INCOME_USAGE_TEXT = "Доход добавляется командой: /income 25000 Зарплата"
+MANUAL_CASH_USAGE_TEXT = "Наличный расход добавляется командой: /cash 450 Рынок"
+MANUAL_CASH_WALLET_MISSING_TEXT = (
+    "Сначала создайте семейный кошелёк наличных в веб-разделе «Наличные»."
+)
 MANUAL_CREATED_TEXT = "Операция добавлена."
 MANUAL_CREATED_REVIEW_TEXT = "Операция добавлена и отправлена на проверку."
+MANUAL_CASH_CREATED_TEXT = "Расход наличными записан."
+MANUAL_CASH_BALANCE_TEXT = "Остаток в кошельке:"
 
 _AMOUNT_PATTERN = re.compile(r"(?<!\w)-?\d+(?:[,.]\d{1,2})?(?!\w)")
 _INCOME_PATTERN = re.compile(
     r"^/income(?:@[A-Za-z0-9_]+)?\s+(\d+(?:[,.]\d{1,2})?)\s+(.+?)\s*$",
+    flags=re.IGNORECASE,
+)
+_CASH_PATTERN = re.compile(
+    r"^/cash(?:@[A-Za-z0-9_]+)?\s+(\d+(?:[,.]\d{1,2})?)\s+(.+?)\s*$",
     flags=re.IGNORECASE,
 )
 
@@ -32,6 +43,7 @@ class ManualTransactionDraft:
     category_hint: str | None
     direction: str = "expense"
     income_type: str | None = None
+    cash_expense: bool = False
 
 
 def create_manual_transaction_text(
@@ -41,12 +53,39 @@ def create_manual_transaction_text(
     text: str,
 ) -> str:
     account = context.default_account
-    if account is None:
-        return MANUAL_SELECT_ACCOUNT_TEXT
-
     draft = parse_manual_transaction(text)
     if draft is None:
+        if _is_cash_command(text):
+            return MANUAL_CASH_USAGE_TEXT
         return MANUAL_INCOME_USAGE_TEXT if _is_income_command(text) else MANUAL_PARSE_USAGE_TEXT
+
+    if draft.cash_expense:
+        service = TransactionService(db)
+        try:
+            transaction = service.create_cash_expense(
+                user=context.user,
+                amount=draft.amount,
+                merchant_name=draft.description,
+                scope="family",
+                comment=f"Telegram manual: {text.strip()}",
+                raw_text=text,
+            )
+        except TransactionServiceError as exc:
+            if "cash wallet" in str(exc).lower():
+                return MANUAL_CASH_WALLET_MISSING_TEXT
+            return MANUAL_CASH_USAGE_TEXT
+        language = _user_language(db, context.user.id)
+        if language == "uk":
+            message = "Витрату готівкою записано."
+            balance_text = "Залишок у гаманці:"
+        else:
+            message = MANUAL_CASH_CREATED_TEXT
+            balance_text = MANUAL_CASH_BALANCE_TEXT
+        balance = service.cash_wallet_balance(user=context.user)
+        return f"{message}\n{balance_text} {balance} {transaction.currency}."
+
+    if account is None:
+        return MANUAL_SELECT_ACCOUNT_TEXT
 
     category_id = _find_category_id(
         db,
@@ -83,6 +122,22 @@ def create_manual_transaction_text(
 
 def parse_manual_transaction(text: str) -> ManualTransactionDraft | None:
     normalized_text = text.strip()
+    if _is_cash_command(normalized_text):
+        match = _CASH_PATTERN.fullmatch(normalized_text)
+        if match is None:
+            return None
+        amount = _parse_positive_amount(match.group(1))
+        if amount is None:
+            return None
+        description = match.group(2).strip()
+        if not description:
+            return None
+        return ManualTransactionDraft(
+            description=description,
+            amount=amount,
+            category_hint=None,
+            cash_expense=True,
+        )
     if _is_income_command(normalized_text):
         match = _INCOME_PATTERN.fullmatch(normalized_text)
         if match is None:
@@ -138,6 +193,18 @@ def _is_income_command(text: str) -> bool:
         return False
     command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
     return command == "/income"
+
+
+def _is_cash_command(text: str) -> bool:
+    if not text.strip():
+        return False
+    command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+    return command == "/cash"
+
+
+def _user_language(db: Session, user_id) -> str:
+    language = db.scalar(select(UserPreference.language).where(UserPreference.user_id == user_id))
+    return language or "ru"
 
 
 def _find_category_id(db: Session, *, family_id, hint: str | None):

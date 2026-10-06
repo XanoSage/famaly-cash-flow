@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analytics.summary import TRANSFER_FLOW_TYPES
+from app.analytics.transfer_semantics import TRANSFER_FLOW_TYPES, counts_as_transfer_metric
 from app.models.transaction import Transaction
 
 
@@ -61,7 +61,10 @@ class TimelineAnalyticsService:
         buckets: dict[date, _MutableTimelineBucket] = {}
         for transaction in transactions:
             period = transaction.occurred_at.date()
-            bucket = buckets.setdefault(period, _MutableTimelineBucket(period=period))
+            bucket = buckets.setdefault(
+                period,
+                _MutableTimelineBucket(period=period, account_filter=account_id),
+            )
             bucket.add(transaction)
 
         rows = [bucket.freeze() for _, bucket in sorted(buckets.items(), key=lambda item: item[0])]
@@ -94,6 +97,7 @@ class TimelineAnalyticsService:
 @dataclass
 class _MutableTimelineBucket:
     period: date
+    account_filter: UUID | None
     income: Decimal = Decimal("0.00")
     expenses: Decimal = Decimal("0.00")
     savings: Decimal = Decimal("0.00")
@@ -107,7 +111,11 @@ class _MutableTimelineBucket:
     def add(self, transaction: Transaction) -> None:
         self.transaction_count += 1
 
-        if transaction.direction == "income" and transaction.amount > 0:
+        if (
+            transaction.direction == "income"
+            and transaction.amount > 0
+            and transaction.flow_type not in TRANSFER_FLOW_TYPES
+        ):
             self.income += transaction.amount
             self.income_count += 1
             return
@@ -117,12 +125,14 @@ class _MutableTimelineBucket:
             self.savings_count += 1
             return
 
-        if transaction.flow_type in TRANSFER_FLOW_TYPES:
+        if transaction.flow_type in TRANSFER_FLOW_TYPES and counts_as_transfer_metric(
+            transaction, account_filter=self.account_filter
+        ):
             self.transfers += abs(transaction.amount)
             self.transfer_count += 1
             return
 
-        if transaction.direction == "expense":
+        if transaction.direction == "expense" and transaction.flow_type not in TRANSFER_FLOW_TYPES:
             self.expenses += abs(transaction.amount)
             self.expense_count += 1
 

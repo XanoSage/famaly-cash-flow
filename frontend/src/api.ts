@@ -54,6 +54,24 @@ export type AccountListResponse = { rows: Account[] };
 export type TransactionDirection = "expense" | "income" | "transfer";
 export type TransactionScope = "family" | "personal_main_user" | "work_fop";
 
+export type CashOperation = {
+  id: string;
+  occurred_at: string;
+  amount: string;
+  currency: string;
+  direction: TransactionDirection;
+  flow_type: string;
+  description: string | null;
+  transfer_group_id: string | null;
+  transfer_role: "source" | "destination" | null;
+};
+
+export type CashSummary = {
+  wallet: { id: string; name: string; currency: string } | null;
+  balance: string;
+  recent_operations: CashOperation[];
+};
+
 export type TransactionRow = {
   id: string;
   account_id: string;
@@ -63,6 +81,9 @@ export type TransactionRow = {
   currency: string;
   direction: TransactionDirection;
   flow_type: string;
+  import_batch_id: string | null;
+  transfer_group_id: string | null;
+  transfer_role: "source" | "destination" | null;
   income_type: string | null;
   scope: TransactionScope;
   description_raw: string | null;
@@ -449,6 +470,76 @@ export async function getAccounts(): Promise<AccountListResponse> {
     throw new Error(await responseError(response, "Could not load accounts."));
   }
   return (await response.json()) as AccountListResponse;
+}
+
+export async function ensureCashWallet(): Promise<Account> {
+  const response = await authenticatedFetch(apiUrl("/accounts/cash-wallet"), { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not create the family cash wallet."));
+  }
+  return (await response.json()) as Account;
+}
+
+export async function getCashSummary(): Promise<CashSummary> {
+  const response = await authenticatedFetch(apiUrl("/cash/summary"));
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not load the cash ledger."));
+  }
+  return (await response.json()) as CashSummary;
+}
+
+export type CashExpenseRequest = {
+  amount: string;
+  occurred_at: string;
+  merchant_name?: string | null;
+  category_id?: string | null;
+  subcategory_id?: string | null;
+  scope: TransactionScope;
+  comment?: string | null;
+};
+
+export async function createCashExpense(payload: CashExpenseRequest): Promise<CashOperation> {
+  const response = await authenticatedFetch(apiUrl("/cash/expenses"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not save this cash expense."));
+  }
+  return (await response.json()) as CashOperation;
+}
+
+export type CashWithdrawalRequest = {
+  source_account_id: string;
+  amount: string;
+  occurred_at: string;
+  description?: string | null;
+  comment?: string | null;
+};
+
+export async function createCashWithdrawal(
+  payload: CashWithdrawalRequest,
+): Promise<{ cash_balance: string }> {
+  const response = await authenticatedFetch(apiUrl("/cash/transfers"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not save this cash withdrawal."));
+  }
+  return (await response.json()) as { cash_balance: string };
+}
+
+export async function linkImportedCashWithdrawal(transactionId: string): Promise<void> {
+  const response = await authenticatedFetch(
+    apiUrl(`/cash/imported-withdrawals/${encodeURIComponent(transactionId)}/link`),
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not link this cash withdrawal."));
+  }
 }
 
 export async function listTransactions(

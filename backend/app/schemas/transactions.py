@@ -30,6 +30,8 @@ class TransactionResponse(BaseModel):
     balance_after: Decimal | None
     direction: str
     flow_type: str
+    transfer_group_id: UUID | None
+    transfer_role: str | None
     income_type: str | None
     scope: str
     description_raw: str | None

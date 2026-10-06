@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.analytics.summary import TRANSFER_FLOW_TYPES
+from app.analytics.transfer_semantics import TRANSFER_FLOW_TYPES
 from app.models.transaction import Transaction
 
 

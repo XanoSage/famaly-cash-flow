@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, created_at, updated_at, uuid_pk
@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
 class Account(Base):
     __tablename__ = "accounts"
+    __table_args__ = (
+        Index(
+            "uq_accounts_family_active_cash_wallet",
+            "family_id",
+            unique=True,
+            postgresql_where=text("type = 'cash' AND is_active = true"),
+            sqlite_where=text("type = 'cash' AND is_active = 1"),
+        ),
+    )
 
     id: Mapped[uuid_pk]
     family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id"), nullable=False)
@@ -34,7 +43,9 @@ class Account(Base):
 class PaymentInstrument(Base):
     __tablename__ = "payment_instruments"
     __table_args__ = (
-        UniqueConstraint("account_id", "masked_label", name="uq_payment_instruments_account_id_masked_label"),
+        UniqueConstraint(
+            "account_id", "masked_label", name="uq_payment_instruments_account_id_masked_label"
+        ),
     )
 
     id: Mapped[uuid_pk]

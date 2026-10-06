@@ -33,6 +33,7 @@ import {
 } from "./api";
 import { ImportPage } from "./import/ImportPage";
 import { TransactionsPage } from "./transactions/TransactionsPage";
+import { CashPage } from "./cash/CashPage";
 import {
   Area,
   AreaChart,
@@ -45,7 +46,7 @@ import {
 
 type Locale = "ru" | "uk";
 type ScopeFilter = "all" | "family" | "work_fop";
-type AppPage = "dashboard" | "transactions" | "import" | "account";
+type AppPage = "dashboard" | "transactions" | "cash" | "import" | "account";
 type AppRoute = { page: AppPage; batchId?: string };
 
 type Summary = {
@@ -176,6 +177,7 @@ const copy = {
     navDashboard: "Дашборд",
     navImport: "Импорт",
     navTransactions: "Операции",
+    navCash: "Наличные",
     navAccount: "Аккаунт / Telegram",
     signIn: "Войти",
     signOut: "Выйти",
@@ -253,6 +255,7 @@ const copy = {
     navDashboard: "Дашборд",
     navImport: "Імпорт",
     navTransactions: "Операції",
+    navCash: "Готівка",
     navAccount: "Обліковий запис / Telegram",
     signIn: "Увійти",
     signOut: "Вийти",
@@ -730,7 +733,7 @@ export function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Family Cash Flow</p>
-          <h1>{route.page === "dashboard" ? t.title : route.page === "transactions" ? t.navTransactions : route.page === "import" ? t.navImport : t.telegramTitle}</h1>
+          <h1>{route.page === "dashboard" ? t.title : route.page === "transactions" ? t.navTransactions : route.page === "cash" ? t.navCash : route.page === "import" ? t.navImport : t.telegramTitle}</h1>
           <p className="subtitle">{t.account}: {currentUser?.family_name} · {currentUser?.display_name}</p>
         </div>
         <div className="account-controls">
@@ -765,6 +768,14 @@ export function App() {
           {t.navTransactions}
         </button>
         <button
+          aria-current={route.page === "cash" ? "page" : undefined}
+          className={route.page === "cash" ? "is-active" : ""}
+          onClick={() => navigateTo("cash")}
+          type="button"
+        >
+          {t.navCash}
+        </button>
+        <button
           aria-current={route.page === "import" ? "page" : undefined}
           className={route.page === "import" ? "is-active" : ""}
           onClick={() => navigateTo("import")}
@@ -784,6 +795,14 @@ export function App() {
 
       {route.page === "transactions" && (
         <TransactionsPage
+          locale={locale}
+          onAuthFailure={handleAuthenticationFailure}
+          onTransactionsChanged={() => void loadDashboard()}
+        />
+      )}
+
+      {route.page === "cash" && (
+        <CashPage
           locale={locale}
           onAuthFailure={handleAuthenticationFailure}
           onTransactionsChanged={() => void loadDashboard()}
@@ -1300,6 +1319,7 @@ function readRoute(): AppRoute {
   const page = params.get("page");
   if (page === "account") return { page: "account" };
   if (page === "transactions") return { page: "transactions" };
+  if (page === "cash") return { page: "cash" };
   if (page === "import") {
     const batchId = params.get("batch") ?? undefined;
     return { page: "import", ...(batchId ? { batchId } : {}) };

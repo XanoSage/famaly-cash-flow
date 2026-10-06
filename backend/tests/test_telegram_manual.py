@@ -16,8 +16,10 @@ from app.models.category import Category
 from app.models.family import Family
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.services.transactions import TransactionService
 from app.telegram_bot.context import TelegramRequestContext
 from app.telegram_bot.manual import (
+    MANUAL_CASH_WALLET_MISSING_TEXT,
     MANUAL_CREATED_REVIEW_TEXT,
     MANUAL_CREATED_TEXT,
     MANUAL_PARSE_USAGE_TEXT,
@@ -65,6 +67,53 @@ def test_parse_manual_income_command_accepts_only_positive_money() -> None:
     assert draft.income_type == "income"
     assert parse_manual_transaction("/income -25 Зарплата") is None
     assert parse_manual_transaction("/income 0 Зарплата") is None
+
+
+def test_parse_cash_expense_command_uses_decimal_and_description() -> None:
+    draft = parse_manual_transaction("/cash 450,50 Рынок")
+
+    assert draft is not None
+    assert draft.amount == Decimal("450.50")
+    assert draft.description == "Рынок"
+    assert draft.cash_expense is True
+    assert parse_manual_transaction("/cash -450 Рынок") is None
+    assert parse_manual_transaction("/cash 450") is None
+
+
+def test_telegram_cash_expense_uses_family_wallet_without_default_account(
+    db_session: Session,
+) -> None:
+    family, user, _, _ = _seed_family(db_session)
+    TransactionService(db_session).ensure_cash_wallet(user=user)
+    reply = create_manual_transaction_text(
+        db_session,
+        context=_context(user, family, None),
+        text="/cash 450 Рынок",
+    )
+
+    transaction = db_session.scalar(select(Transaction))
+    wallet = TransactionService(db_session).get_cash_wallet(user=user)
+    assert transaction is not None and wallet is not None
+    assert transaction.account_id == wallet.id
+    assert transaction.family_id == family.id
+    assert transaction.amount == Decimal("-450.00")
+    assert transaction.direction == "expense"
+    assert transaction.flow_type == "cash_expense"
+    assert reply.startswith("Расход наличными записан.")
+    assert "-450.00 UAH" in reply
+
+
+def test_telegram_cash_expense_requires_wallet_setup_in_web(db_session: Session) -> None:
+    family, user, _, _ = _seed_family(db_session)
+
+    reply = create_manual_transaction_text(
+        db_session,
+        context=_context(user, family, None),
+        text="/cash 450 Рынок",
+    )
+
+    assert reply == MANUAL_CASH_WALLET_MISSING_TEXT
+    assert db_session.scalar(select(Transaction)) is None
 
 
 def test_telegram_income_uses_shared_service_and_persists_audit(

@@ -102,7 +102,7 @@ def dispatch_update(
         ]
 
     if not private_chat:
-        if command_name in {"summary", "review", "done", "account"} or command_name is None:
+        if command_name in {"summary", "review", "done", "account", "cash"} or command_name is None:
             return [BotReply(chat_id=chat_id, text=PRIVATE_CHAT_ONLY_TEXT)]
         return []
     if telegram_user_id is None:
@@ -125,7 +125,7 @@ def dispatch_update(
         ]
     if command_name == "account" and account_text_provider is not None:
         return [_to_bot_reply(chat_id, account_text_provider(context))]
-    if command_name in {None, "income"} and text_message_provider is not None:
+    if command_name in {None, "income", "cash"} and text_message_provider is not None:
         reply_text = text_message_provider(context, text)
         if reply_text:
             return [BotReply(chat_id=chat_id, text=reply_text)]
