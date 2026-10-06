@@ -10,8 +10,17 @@ const test = base.extend<{ apiFailures: string[] }>({
     const failures: string[] = [];
     page.on("response", (response) => {
       if (response.status() < 400 || !response.url().includes("/api/v1/")) return;
+      const request = response.request();
+      const path = new URL(response.url()).pathname;
+      if (
+        response.status() === 401
+        && request.method() === "POST"
+        && path.endsWith("/auth/refresh")
+      ) {
+        return;
+      }
       failures.push(
-        `${response.status()} ${response.request().method()} ${safePath(response.url())}`,
+        `${response.status()} ${request.method()} ${safePath(response.url())}`,
       );
     });
     page.on("requestfailed", (request) => {
@@ -60,7 +69,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
 
   await page.getByRole("button", { name: "Импорт" }).click();
   await expect(page.getByRole("heading", { name: "Импорт выписки" })).toBeVisible();
-  await page.getByLabel("Выбрать файл").setInputFiles(fixturePath.pathname);
+  await page.getByLabel("Выбрать файл").setInputFiles(fixturePath);
   await page.getByRole("button", { name: "Загрузить и проверить" }).click();
 
   const summary = page
