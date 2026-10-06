@@ -1,9 +1,8 @@
 # Current State (2026-10-06)
 
-Cash Ledger was merged into `staging` as `17c3e7db82dbd597915be1b3ff5c544873a7189c`; the old
-documentation-only `main` branch was not modified. The full-stack E2E readiness work is on
-`codex/mvp-e2e-readiness`, based on that staging merge. This document records both the implemented
-state and the exact verification available on this branch.
+Cash Ledger was merged into `staging` as `17c3e7db82dbd597915be1b3ff5c544873a7189c`. Full-stack
+MVP E2E readiness was merged into `staging` as `024cd6e937eb7fc15b41a4ead5848c67402dab6c`;
+`main` was not modified. The staging merge CI result and MVP validation baseline are recorded below.
 
 ## Verified Working Features
 
@@ -30,16 +29,16 @@ state and the exact verification available on this branch.
 - Telegram `/cash <amount> <description>` records a cash expense through the same
   `TransactionService` used by Web. If the wallet is missing, the bot directs the user to create it
   in Web.
-- The E2E branch adds a synthetic-only browser journey using Playwright/Chromium against the built
-  React app, FastAPI, and a disposable PostgreSQL database. It covers auth refresh, persisted XLSX
-  review and duplicate detection, import confirmation, transaction CRUD and analytics, cash ledger,
-  RU/UK labels, and a mobile-width overflow check. See the verification table below for the result.
+- The staging E2E workflow runs a synthetic-only browser journey using Playwright/Chromium against
+  the built React app, FastAPI, and a disposable PostgreSQL database. It covers auth refresh, persisted
+  XLSX review and duplicate detection, import confirmation, transaction CRUD and analytics, cash
+  ledger, RU/UK labels, and a mobile-width overflow check. See the staging baseline below for the result.
 
 ## Implementation Plan Status
 
 | Phase | Status | Current evidence |
 | --- | --- | --- |
-| 0. Repository/branch setup | Complete | Cash Ledger is on `staging`; E2E readiness is isolated on `codex/mvp-e2e-readiness`; `main` is untouched. |
+| 0. Repository/branch setup | Complete | Cash Ledger and E2E readiness are merged into `staging`; `main` is untouched. |
 | 1-3. Skeleton and database | Complete | FastAPI/React app, PostgreSQL models, and a single Alembic migration head. |
 | 4. Auth MVP | Complete in code | Web auth and persistent Telegram identity linking; family scope comes from the persisted user. |
 | 5-6. Parser/import preview | Complete in code | Synthetic XLSX tests; persisted preview, duplicate review, and bulk/row review actions. |
@@ -47,7 +46,7 @@ state and the exact verification available on this branch.
 | 8. Import confirmation | Complete in code | Web upload/review/confirm path and backend tests. |
 | 9. Transactions API | Complete in code | Family-scoped CRUD, audit, validation, and soft delete. |
 | 10. Analytics API | Complete for current endpoints | Summary, categories, merchants, timeline, savings, work/FOP and insights. Cash withdrawals now remain outside expense/income and count once as transfers. |
-| 11. Frontend skeleton | Partial | Authenticated React shell and page navigation; the E2E branch adds a real browser journey, but no component-level test harness. |
+| 11. Frontend skeleton | Partial | Authenticated React shell and page navigation; staging CI runs a real browser journey, but there is no component-level test harness. |
 | 12. Import UI | Complete in code | Upload, review, row edit, bulk actions, and confirmation. |
 | 13. Operations/dashboard UI | Partial | Transactions and Cash Ledger UI are implemented and covered by the browser journey; broader dashboard charts/blocks remain. |
 | 14. Budgets/notifications | Not started | Budget limits and budget notifications are absent. |
@@ -129,7 +128,24 @@ PostgreSQL integration tests require a disposable database whose name ends in
 `_integration_test`. See [Testing](testing.md) for the required environment variables and safe
 setup instructions.
 
-## Verification Results On This Branch
+## Staging MVP Validation Baseline
+
+The E2E readiness merge commit is `024cd6e937eb7fc15b41a4ead5848c67402dab6c`. Staging CI run
+[37466104966](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37466104966) completed
+successfully with all four required jobs: backend tests and changed-file Ruff, PostgreSQL integration
+and migrations, frontend tests and build, and full-stack browser E2E against PostgreSQL. The verified
+baseline is:
+
+- Alembic has one head: `202610060002`.
+- Backend fast suite: 166 passed, 7 PostgreSQL-only tests skipped, 1 warning. PostgreSQL integration:
+  7 passed (5 warnings).
+- Frontend: 14 tests passed; TypeScript and Vite production build passed.
+- Playwright/Chromium: the full-stack browser journey passed against a freshly migrated PostgreSQL
+  database (one browser test).
+- `docs/real-data-smoke-checklist.md` remains unchanged. Private real-data validation is still pending;
+  the CI journey uses only synthetic data.
+
+## Verification Results
 
 Commands were run in Windows PowerShell from the listed directories.
 
@@ -149,7 +165,7 @@ Commands were run in Windows PowerShell from the listed directories.
 | repository root | `Get-Command docker -ErrorAction SilentlyContinue` | **Unavailable:** no Docker CLI; Compose and live local PostgreSQL checks could not run. |
 | repository root | `git diff --check` | **Passed.** |
 | GitHub Actions | Cash Ledger run `37456959592` (`6dfeead`) | **Passed:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
-| GitHub Actions | Full-stack readiness run [37464340923](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37464340923), commit `5a610b8369e3dba29f456f9320bf12cb29d2e965` | **Passed all four jobs:** backend tests/changed-file Ruff, PostgreSQL migration and integration, frontend tests/build, and full-stack browser E2E. The PostgreSQL job ran 7 integration tests successfully; the Playwright 1.63.0 Chromium journey passed 1 test in 6.5 seconds against PostgreSQL 18.6. The whole workflow completed in 1m 26s. |
+| GitHub Actions | Staging merge run [37466104966](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37466104966), merge commit `024cd6e937eb7fc15b41a4ead5848c67402dab6c` | **Passed all four required jobs.** Exact result counts are summarized in the staging baseline above. |
 
 ## Recommended Next Task
 
