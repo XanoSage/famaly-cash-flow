@@ -131,7 +131,7 @@ Commands were run in Windows PowerShell from the listed directories.
 | `frontend` | `npm.cmd run build -- --debug` | **Passed:** TypeScript and Vite; 2,212 modules transformed; JS 705.17 kB (200.44 kB gzip), CSS 21.28 kB. Vite emitted the >500 kB chunk warning. An earlier parallel invocation failed in Vite's HTML asset naming; the isolated build completed successfully. |
 | repository root | `Get-Command docker -ErrorAction SilentlyContinue` | **Unavailable:** no Docker CLI; Compose and live local PostgreSQL checks could not run. |
 | repository root | `git diff --check` | **Passed.** |
-| GitHub Actions | `codex/cash-ledger` branch run | Pending push/verification. |
+| GitHub Actions | Run `37456464151` on implementation commit `4607a13` | **Passed in 48s:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
 
 ## Recommended Next Task
 
