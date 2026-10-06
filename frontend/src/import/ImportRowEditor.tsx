@@ -124,6 +124,7 @@ export function ImportRowEditor({
           <label className="field">
             <span>{t.category}</span>
             <select
+              aria-label={t.category}
               value={categoryId}
               onChange={(event) => {
                 const next = categorySelectionChanged(event.target.value);
@@ -139,6 +140,7 @@ export function ImportRowEditor({
           <label className="field">
             <span>{t.category} / {t.chooseSubcategory}</span>
             <select
+              aria-label={`${t.category} / ${t.chooseSubcategory}`}
               disabled={!selectedCategory}
               value={subcategoryId}
               onChange={(event) => setSubcategoryId(event.target.value)}

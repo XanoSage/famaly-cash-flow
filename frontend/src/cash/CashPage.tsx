@@ -276,11 +276,11 @@ export function CashPage({ locale, onAuthFailure, onTransactionsChanged }: Props
                 onDateChange={setExpenseAt}
               />
               <label className="field"><span>{t.description}</span><input maxLength={255} value={expenseDescription} onChange={(event) => setExpenseDescription(event.target.value)} /></label>
-              <label className="field"><span>{t.category}</span><select value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setSubcategoryId(""); }}>
+              <label className="field"><span>{t.category}</span><select aria-label={t.category} value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setSubcategoryId(""); }}>
                 <option value="">{t.noCategory}</option>
                 {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
               </select></label>
-              <label className="field"><span>{t.subcategory}</span><select disabled={!selectedCategory?.subcategories.length} value={subcategoryId} onChange={(event) => setSubcategoryId(event.target.value)}>
+              <label className="field"><span>{t.subcategory}</span><select aria-label={t.subcategory} disabled={!selectedCategory?.subcategories.length} value={subcategoryId} onChange={(event) => setSubcategoryId(event.target.value)}>
                 <option value="">—</option>
                 {selectedCategory?.subcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}
               </select></label>
