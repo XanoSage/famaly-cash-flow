@@ -278,7 +278,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Наличные" }).click();
-  await expect(page.getByRole("heading", { name: "Наличные" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Наличные", level: 1 })).toBeVisible();
   const mobileDocumentFits = await page.evaluate(
     () => document.documentElement.scrollWidth <= window.innerWidth,
   );
