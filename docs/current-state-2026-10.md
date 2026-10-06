@@ -71,6 +71,8 @@ not been merged into `staging` or `main`; `main` was not modified.
   family role/permission model.
 - The Starlette test client emits a deprecation warning for its current `httpx` integration.
 - Vite succeeds but warns that the minified JavaScript chunk exceeds 500 kB.
+- Backend dependencies are declared in `pyproject.toml` but do not have a checked-in lock file;
+  `pip check` passes, but this does not pin a reproducible backend environment.
 - Repository-wide Ruff still reports 21 findings in untouched baseline files (16 `E501`, 5
   `I001`), and its formatter reports 25 untouched files would be reformatted. The changed Python
   files pass both CI's changed-file checks.
@@ -131,7 +133,7 @@ Commands were run in Windows PowerShell from the listed directories.
 | `frontend` | `npm.cmd run build -- --debug` | **Passed:** TypeScript and Vite; 2,212 modules transformed; JS 705.17 kB (200.44 kB gzip), CSS 21.28 kB. Vite emitted the >500 kB chunk warning. An earlier parallel invocation failed in Vite's HTML asset naming; the isolated build completed successfully. |
 | repository root | `Get-Command docker -ErrorAction SilentlyContinue` | **Unavailable:** no Docker CLI; Compose and live local PostgreSQL checks could not run. |
 | repository root | `git diff --check` | **Passed.** |
-| GitHub Actions | Run `37456464151` on implementation commit `4607a13` | **Passed in 48s:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
+| GitHub Actions | Runs `37456464151` (`4607a13`) and `37456664968` (`d0776ed`) | **Both passed:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
 
 ## Recommended Next Task
 
