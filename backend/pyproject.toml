@@ -33,6 +33,7 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["postgres: requires a disposable migrated PostgreSQL integration database"]
 
 [tool.ruff]
 line-length = 100
