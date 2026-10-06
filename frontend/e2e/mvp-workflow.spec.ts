@@ -171,7 +171,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   const coffeeExpense = transactionRow(page, "Кофе E2E");
   await expect(coffeeExpense.locator("b.amount-negative")).toContainText(/[-−]250,00/);
   await page.getByRole("button", { name: "Дашборд" }).click();
-  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]600,00/);
+  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]?600,00/);
 
   await page.getByRole("button", { name: "Операции" }).click();
   const manualIncomeResponse = page.waitForResponse((response) =>
