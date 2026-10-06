@@ -63,6 +63,9 @@ state and the exact verification available on this branch.
   estimate because unrecorded cash spending cannot be inferred.
 - Broad frontend component coverage. The new end-to-end journey exercises one representative MVP
   path; it does not replace focused tests for other screens, validation edges, or accessibility.
+- The optional browser flow to link an imported ATM withdrawal to the wallet is not part of this
+  E2E journey; the browser scenario covers a manual card-to-cash withdrawal and a separate cash
+  purchase.
 - A live PostgreSQL migration/integration run on this Windows machine. PostgreSQL-marked tests are
   skipped locally because Docker is unavailable; branch CI is the live database verification.
 - Live Telegram Bot API/webhook interaction. Telegram behavior is tested without contacting the
@@ -140,19 +143,20 @@ Commands were run in Windows PowerShell from the listed directories.
 | `backend` | `.venv\Scripts\python.exe -m ruff check --select E,F,I --statistics --output-format concise app tests` | **Failed on untouched baseline files:** 21 findings (16 `E501`, 5 `I001`). Changed-file checks pass. |
 | `backend` | `.venv\Scripts\python.exe -m ruff format --check app tests` | **Failed on untouched baseline files:** 25 would be reformatted; all changed Python files pass. |
 | `frontend` | `npm.cmd test` | **14 passed, 0 failed.** |
-| `frontend` | `npm.cmd run build -- --debug` | **Passed:** TypeScript and Vite; 2,212 modules transformed; JS 705.17 kB (200.44 kB gzip), CSS 21.28 kB. Vite emitted the >500 kB chunk warning. An earlier parallel invocation failed in Vite's HTML asset naming; the isolated build completed successfully. |
-| `frontend` | `npm run test:e2e -- --list` | **Passed:** Playwright discovered one full-stack browser test. This lists the test; it does not execute a browser journey. |
+| `frontend` | `npm.cmd run build` | **Passed:** TypeScript and Vite; 2,212 modules transformed; JS 705.38 kB (200.47 kB gzip), CSS 21.28 kB. Vite emitted the >500 kB chunk warning. |
+| `frontend` | `npm.cmd run test:e2e -- --list` | **Passed:** Playwright 1.63.0 discovered one full-stack browser test. This lists the test; it does not execute a browser journey. |
 | `frontend` | `npm audit --omit=dev` | **Reported 14 advisories:** 1 low, 2 moderate, 11 high; no fix available for the reported dependency chains at the time of this check. No audit fix was applied. |
 | repository root | `Get-Command docker -ErrorAction SilentlyContinue` | **Unavailable:** no Docker CLI; Compose and live local PostgreSQL checks could not run. |
 | repository root | `git diff --check` | **Passed.** |
 | GitHub Actions | Cash Ledger run `37456959592` (`6dfeead`) | **Passed:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
-| GitHub Actions | E2E readiness run | **Pending verification on this branch.** Its `fullstack-e2e` job uses PostgreSQL 18.6 and Chromium; the local machine has no Docker/PostgreSQL service, so the real browser-to-database journey cannot be claimed until this run completes successfully. |
+| GitHub Actions | Full-stack readiness run [37463724854](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37463724854), commit `46e4ed0679186e9714e0aef4469d810773a70f4f` | **Passed all four jobs:** backend tests/changed-file Ruff, PostgreSQL migration and integration, frontend tests/build, and full-stack browser E2E. The PostgreSQL job ran 7 integration tests successfully; the Playwright 1.63.0 Chromium journey passed 1 test in 8.2 seconds against PostgreSQL 18.6. The whole workflow completed in 1m 22s. |
 
 ## Recommended Next Task
 
 First complete a private run of [Real Data Smoke Checklist](real-data-smoke-checklist.md) with a
 backed-up local database and one real statement; record discrepancies outside the repository and
-resolve any import/date/category issues found. After that validation, implement the **Budget
-Foundation** as a backend-first slice: Alembic-backed monthly family budget and category-limit
-models, family-scoped API/service operations using `Decimal`, and PostgreSQL plus unit tests. Defer
-budget notifications and broader dashboard redesign to later slices.
+resolve any import/date/category issues found. Do not start Budget Foundation until that private
+validation is reviewed. After validation, the likely next product slice is a backend-first **Budget
+Foundation**: Alembic-backed monthly family budget and category-limit models, family-scoped
+API/service operations using `Decimal`, and PostgreSQL plus unit tests. Defer budget notifications
+and broader dashboard redesign to later slices.

@@ -65,10 +65,15 @@ starts both local servers and polls their health URLs with bounded timeouts; the
 from the production build rather than Vite's development server. Failure-only browser diagnostics
 are uploaded as a short-retention Actions artifact.
 
-Verification: GitHub Actions run [37363137308](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37363137308)
-passed all three jobs on commit `d44217831d37df67e0ecc64df800046b507ca07c`, including PostgreSQL
-18.6 migrations and five marked integration tests. GitHub's admin-only logs permission denied the
-detailed logs; run and step conclusions were visible.
+The initial PostgreSQL integration workflow run [37363137308](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37363137308)
+passed all three then-existing jobs on commit `d44217831d37df67e0ecc64df800046b507ca07c`, including
+PostgreSQL 18.6 migrations and five marked integration tests.
+
+The full four-job workflow passed in run [37463724854](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37463724854)
+on commit `46e4ed0679186e9714e0aef4469d810773a70f4f`. It ran seven PostgreSQL integration tests,
+and the full-stack Playwright 1.63.0/Chromium journey passed against a freshly migrated PostgreSQL
+18.6 database. The workflow duration was 1m 22s; detailed results are recorded in
+[`current-state-2026-10.md`](current-state-2026-10.md).
 
 ## Branching
 
