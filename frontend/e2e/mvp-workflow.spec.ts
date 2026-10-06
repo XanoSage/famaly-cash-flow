@@ -137,8 +137,8 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   ).toHaveText("6");
 
   await page.getByRole("button", { name: "Перейти на дашборд" }).click();
-  await expectDashboardAmount(page, "Доходы", /2[\s\u00a0\u202f]000,00/);
-  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]350,00/);
+  await expectDashboardAmount(page, "Доходы", /2[\s\u00a0\u202f]?000,00/);
+  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]?350,00/);
 
   await page.getByRole("button", { name: "Операции" }).click();
   await expect(page.getByRole("heading", { name: "Операции" }).first()).toBeVisible();
@@ -187,10 +187,10 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   expect(manualIncome.status()).toBe(201);
   const incomePayload = await manualIncome.json() as { amount: string; direction: string };
   expect(incomePayload).toMatchObject({ amount: "1000.00", direction: "income" });
-  await expect(transactionRow(page, "E2E Income").locator("b.amount-positive")).toContainText(/1[\s\u00a0\u202f]000,00/);
+  await expect(transactionRow(page, "E2E Income").locator("b.amount-positive")).toContainText(/1[\s\u00a0\u202f]?000,00/);
   await page.getByRole("button", { name: "Дашборд" }).click();
-  await expectDashboardAmount(page, "Доходы", /3[\s\u00a0\u202f]000,00/);
-  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]600,00/);
+  await expectDashboardAmount(page, "Доходы", /3[\s\u00a0\u202f]?000,00/);
+  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]?600,00/);
 
   await page.getByRole("button", { name: "Операции" }).click();
   await transactionRow(page, "Кофе E2E").getByRole("button", { name: "Изменить" }).click();
@@ -226,7 +226,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   await page.reload();
   await expect(transactionRow(page, "Кофе E2E исправлено")).toHaveCount(0);
   await page.getByRole("button", { name: "Дашборд" }).click();
-  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]350,00/);
+  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]?350,00/);
 
   await page.getByRole("button", { name: "Наличные" }).click();
   await expect(page.getByRole("heading", { name: "Создайте семейный кошелек наличных" })).toBeVisible();
@@ -249,7 +249,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   expect(await withdrawal.json()).toMatchObject({ amount: "500.00", cash_balance: "500.00" });
   await expect(page.locator(".cash-balance strong")).toContainText(/500,00/);
   await page.getByRole("button", { name: "Дашборд" }).click();
-  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]350,00/);
+  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]?350,00/);
 
   await page.getByRole("button", { name: "Наличные" }).click();
   const cashExpenseForm = page.locator("form").filter({
@@ -268,7 +268,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   expect(await cashExpense.json()).toMatchObject({ amount: "-120.00", flow_type: "cash_expense" });
   await expect(page.locator(".cash-balance strong")).toContainText(/380,00/);
   await page.getByRole("button", { name: "Дашборд" }).click();
-  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]470,00/);
+  await expectDashboardAmount(page, "Расходы", /1[\s\u00a0\u202f]?470,00/);
 
   await page.getByLabel("Язык").selectOption("uk");
   await expect(page.getByRole("button", { name: "Операції" })).toBeVisible();
