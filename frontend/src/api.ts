@@ -51,6 +51,87 @@ export type Account = {
 
 export type AccountListResponse = { rows: Account[] };
 
+export type TransactionDirection = "expense" | "income" | "transfer";
+export type TransactionScope = "family" | "personal_main_user" | "work_fop";
+
+export type TransactionRow = {
+  id: string;
+  account_id: string;
+  account_name: string;
+  occurred_at: string;
+  amount: string;
+  currency: string;
+  direction: TransactionDirection;
+  flow_type: string;
+  income_type: string | null;
+  scope: TransactionScope;
+  description_raw: string | null;
+  description_override: string | null;
+  display_description: string | null;
+  merchant_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  subcategory_id: string | null;
+  subcategory_name: string | null;
+  comment: string | null;
+  needs_review: boolean;
+};
+
+export type TransactionListResponse = {
+  total: number;
+  offset: number;
+  limit: number;
+  rows: TransactionRow[];
+};
+
+export type ManualTransactionRequest = {
+  direction: "expense" | "income";
+  amount: string;
+  account_id: string;
+  occurred_at: string;
+  merchant_name?: string | null;
+  category_id?: string | null;
+  subcategory_id?: string | null;
+  flow_type?: string;
+  income_type?: string;
+  scope: TransactionScope;
+  comment?: string | null;
+};
+
+export type TransactionUpdateRequest = Partial<ManualTransactionRequest>;
+
+export type TransactionFilters = {
+  date_from?: string;
+  date_to?: string;
+  account_id?: string;
+  category_id?: string;
+  uncategorized?: boolean;
+  direction?: "expense" | "income";
+  scope?: TransactionScope;
+  needs_review?: boolean;
+  offset?: number;
+  limit?: number;
+};
+
+export function buildTransactionListUrl(href: string | URL, filters: TransactionFilters): URL {
+  const url = new URL(href);
+  if (filters.date_from) {
+    url.searchParams.set("occurred_from", localDateBoundary(filters.date_from, false));
+  }
+  if (filters.date_to) {
+    url.searchParams.set("occurred_to", localDateBoundary(filters.date_to, true));
+  }
+  for (const key of ["account_id", "category_id", "direction", "scope"] as const) {
+    const value = filters[key];
+    if (value) url.searchParams.set(key, value);
+  }
+  for (const key of ["uncategorized", "needs_review", "offset", "limit"] as const) {
+    const value = filters[key];
+    if (value !== undefined) url.searchParams.set(key, String(value));
+  }
+  return url;
+}
+
 export type ImportRowStatus =
   | "auto_ready"
   | "needs_review"
@@ -368,6 +449,63 @@ export async function getAccounts(): Promise<AccountListResponse> {
     throw new Error(await responseError(response, "Could not load accounts."));
   }
   return (await response.json()) as AccountListResponse;
+}
+
+export async function listTransactions(
+  filters: TransactionFilters = {},
+): Promise<TransactionListResponse> {
+  const response = await authenticatedFetch(buildTransactionListUrl(apiUrl("/transactions"), filters));
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not load transactions."));
+  }
+  return (await response.json()) as TransactionListResponse;
+}
+
+export async function createTransaction(
+  payload: ManualTransactionRequest,
+): Promise<TransactionRow> {
+  const response = await authenticatedFetch(apiUrl("/transactions"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not create this transaction."));
+  }
+  return (await response.json()) as TransactionRow;
+}
+
+export async function updateTransaction(
+  transactionId: string,
+  payload: TransactionUpdateRequest,
+): Promise<TransactionRow> {
+  const response = await authenticatedFetch(
+    apiUrl(`/transactions/${encodeURIComponent(transactionId)}`),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not update this transaction."));
+  }
+  return (await response.json()) as TransactionRow;
+}
+
+export async function deleteTransaction(transactionId: string): Promise<void> {
+  const response = await authenticatedFetch(
+    apiUrl(`/transactions/${encodeURIComponent(transactionId)}`),
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(await responseError(response, "Could not delete this transaction."));
+  }
+}
+
+function localDateBoundary(value: string, endOfDay: boolean): string {
+  const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00"}`);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 export async function uploadImportPreview(file: File, limit = 50): Promise<ImportPreviewResponse> {

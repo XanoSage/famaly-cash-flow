@@ -1,4 +1,5 @@
 from app.models.account import Account, PaymentInstrument
+from app.models.audit_log import AuditLog
 from app.models.categorization_rule import CategorizationRule
 from app.models.category import Category, Subcategory
 from app.models.family import Family
@@ -10,6 +11,7 @@ from app.models.user import AuthSession, User, UserPreference
 
 __all__ = [
     "Account",
+    "AuditLog",
     "AuthSession",
     "CategorizationRule",
     "Category",

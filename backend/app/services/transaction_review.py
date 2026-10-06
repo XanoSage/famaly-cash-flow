@@ -8,6 +8,16 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.models.user import User
+from app.services.transactions import (
+    TransactionNotFoundError as MutationNotFoundError,
+)
+from app.services.transactions import (
+    TransactionService,
+)
+from app.services.transactions import (
+    TransactionValidationError as MutationValidationError,
+)
 
 
 class TransactionReviewError(ValueError):
@@ -54,10 +64,32 @@ class TransactionReviewService:
         *,
         family_id: UUID,
         transaction_id: UUID,
+        user: User | None = None,
         category_id: UUID | None | _Unset = UNSET,
         comment: str | None | _Unset = UNSET,
         needs_review: bool | None | _Unset = UNSET,
     ) -> Transaction:
+        if user is not None:
+            changes = {}
+            if not isinstance(category_id, _Unset):
+                changes["category_id"] = category_id
+            if not isinstance(comment, _Unset):
+                changes["comment"] = comment
+            if not isinstance(needs_review, _Unset) and needs_review is not None:
+                changes["needs_review"] = needs_review
+            try:
+                return TransactionService(self.db).update(
+                    user=user,
+                    transaction_id=transaction_id,
+                    changes=changes,
+                )
+            except MutationNotFoundError as exc:
+                raise TransactionNotFoundError("Transaction not found.") from exc
+            except MutationValidationError as exc:
+                if not isinstance(category_id, _Unset):
+                    raise CategoryNotFoundError("Category not found.") from exc
+                raise
+
         transaction = self._get_transaction(family_id=family_id, transaction_id=transaction_id)
 
         if not isinstance(category_id, _Unset):
@@ -83,10 +115,26 @@ class TransactionReviewService:
         self.db.refresh(transaction)
         return transaction
 
-    def mark_reviewed(self, *, family_id: UUID, transaction_id: UUID) -> bool:
+    def mark_reviewed(
+        self,
+        *,
+        family_id: UUID,
+        transaction_id: UUID,
+        user: User | None = None,
+    ) -> bool:
         transaction = self._get_transaction(family_id=family_id, transaction_id=transaction_id)
         if not transaction.needs_review:
             return False
+        if user is not None:
+            try:
+                TransactionService(self.db).update(
+                    user=user,
+                    transaction_id=transaction_id,
+                    changes={"needs_review": False},
+                )
+            except MutationNotFoundError as exc:
+                raise TransactionNotFoundError("Transaction not found.") from exc
+            return True
         transaction.needs_review = False
         self.db.commit()
         return True
@@ -97,10 +145,12 @@ class TransactionReviewService:
         family_id: UUID,
         transaction_id: UUID,
         category_id: UUID,
+        user: User | None = None,
     ) -> Transaction:
         return self.update(
             family_id=family_id,
             transaction_id=transaction_id,
+            user=user,
             category_id=category_id,
             needs_review=False,
         )

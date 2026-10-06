@@ -4,17 +4,25 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.services.manual_transaction import ManualTransactionError, ManualTransactionService
+from app.models.category import Category
+from app.services.import_review import normalize_review_text
+from app.services.transactions import TransactionService, TransactionServiceError
 from app.telegram_bot.context import TelegramRequestContext
 
 MANUAL_SELECT_ACCOUNT_TEXT = "Сначала выбери активный счёт командой /account."
 MANUAL_PARSE_USAGE_TEXT = "Напиши операцию в формате: АТБ 450 еда"
+MANUAL_INCOME_USAGE_TEXT = "Доход добавляется командой: /income 25000 Зарплата"
 MANUAL_CREATED_TEXT = "Операция добавлена."
 MANUAL_CREATED_REVIEW_TEXT = "Операция добавлена и отправлена на проверку."
 
 _AMOUNT_PATTERN = re.compile(r"(?<!\w)-?\d+(?:[,.]\d{1,2})?(?!\w)")
+_INCOME_PATTERN = re.compile(
+    r"^/income(?:@[A-Za-z0-9_]+)?\s+(\d+(?:[,.]\d{1,2})?)\s+(.+?)\s*$",
+    flags=re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +30,8 @@ class ManualTransactionDraft:
     description: str
     amount: Decimal
     category_hint: str | None
+    direction: str = "expense"
+    income_type: str | None = None
 
 
 def create_manual_transaction_text(
@@ -36,19 +46,34 @@ def create_manual_transaction_text(
 
     draft = parse_manual_transaction(text)
     if draft is None:
-        return MANUAL_PARSE_USAGE_TEXT
+        return MANUAL_INCOME_USAGE_TEXT if _is_income_command(text) else MANUAL_PARSE_USAGE_TEXT
 
+    category_id = _find_category_id(
+        db,
+        family_id=context.family.id,
+        hint=draft.category_hint,
+    )
+    service = TransactionService(db)
     try:
-        transaction = ManualTransactionService(db).create_expense(
-            user_id=context.user.id,
-            family_id=context.family.id,
-            account_id=account.id,
-            description=draft.description,
-            raw_text=text,
-            amount=draft.amount,
-            category_hint=draft.category_hint,
-        )
-    except ManualTransactionError:
+        arguments = {
+            "user": context.user,
+            "account_id": account.id,
+            "amount": draft.amount,
+            "occurred_at": None,
+            "merchant_name": draft.description,
+            "category_id": category_id,
+            "scope": "family",
+            "comment": f"Telegram manual: {text.strip()}",
+            "raw_text": text,
+        }
+        if draft.direction == "income":
+            transaction = service.create_income(
+                **arguments,
+                income_type=draft.income_type or "income",
+            )
+        else:
+            transaction = service.create_expense(**arguments)
+    except TransactionServiceError:
         return MANUAL_SELECT_ACCOUNT_TEXT
 
     if transaction.needs_review:
@@ -58,18 +83,31 @@ def create_manual_transaction_text(
 
 def parse_manual_transaction(text: str) -> ManualTransactionDraft | None:
     normalized_text = text.strip()
+    if _is_income_command(normalized_text):
+        match = _INCOME_PATTERN.fullmatch(normalized_text)
+        if match is None:
+            return None
+        amount = _parse_positive_amount(match.group(1))
+        if amount is None:
+            return None
+        description = match.group(2).strip()
+        if not description:
+            return None
+        return ManualTransactionDraft(
+            description=description,
+            amount=amount,
+            category_hint=None,
+            direction="income",
+            income_type="income",
+        )
     if not normalized_text or normalized_text.startswith("/"):
         return None
 
     match = _AMOUNT_PATTERN.search(normalized_text)
     if match is None:
         return None
-
-    try:
-        amount = Decimal(match.group(0).replace(",", ".")).quantize(Decimal("0.01"))
-    except InvalidOperation:
-        return None
-    if amount == Decimal("0.00"):
+    amount = _parse_positive_amount(match.group(0))
+    if amount is None:
         return None
 
     description = normalized_text[: match.start()].strip()
@@ -80,14 +118,48 @@ def parse_manual_transaction(text: str) -> ManualTransactionDraft | None:
 
     return ManualTransactionDraft(
         description=description,
-        amount=abs(amount),
+        amount=amount,
         category_hint=category_hint or None,
     )
+
+
+def _parse_positive_amount(value: str) -> Decimal | None:
+    try:
+        amount = Decimal(value.replace(",", "."))
+        if not amount.is_finite() or amount <= 0:
+            return None
+        return amount.quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return None
+
+
+def _is_income_command(text: str) -> bool:
+    if not text.strip():
+        return False
+    command = text.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+    return command == "/income"
+
+
+def _find_category_id(db: Session, *, family_id, hint: str | None):
+    normalized_hint = normalize_review_text(hint)
+    if not normalized_hint:
+        return None
+    categories = db.scalars(
+        select(Category).where(or_(Category.family_id == family_id, Category.family_id.is_(None)))
+    ).all()
+    for category in categories:
+        if normalize_review_text(category.name) == normalized_hint:
+            return category.id
+    for category in categories:
+        name = normalize_review_text(category.name)
+        if normalized_hint in name or name in normalized_hint:
+            return category.id
+    return None
 
 
 def _format_created_transaction(transaction) -> str:
     category_name = transaction.category.name if transaction.category else "без категории"
     return (
-        f"{transaction.description_normalized}: {transaction.amount} "
-        f"{transaction.currency} | {category_name}"
+        f"{transaction.description_override or transaction.description_normalized}: "
+        f"{transaction.amount} {transaction.currency} | {category_name}"
     )

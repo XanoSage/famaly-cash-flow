@@ -11,12 +11,14 @@ from sqlalchemy.pool import StaticPool
 from app import models  # noqa: F401
 from app.db.base import Base
 from app.models.account import Account
+from app.models.audit_log import AuditLog
 from app.models.category import Category
 from app.models.family import Family
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.telegram_bot.context import TelegramRequestContext
 from app.telegram_bot.manual import (
+    MANUAL_CREATED_REVIEW_TEXT,
     MANUAL_CREATED_TEXT,
     MANUAL_PARSE_USAGE_TEXT,
     MANUAL_SELECT_ACCOUNT_TEXT,
@@ -51,6 +53,48 @@ def test_parse_manual_transaction_rejects_commands_or_missing_amount() -> None:
     assert parse_manual_transaction("/summary") is None
     assert parse_manual_transaction("АТБ еда") is None
     assert parse_manual_transaction("АТБ 0 еда") is None
+
+
+def test_parse_manual_income_command_accepts_only_positive_money() -> None:
+    draft = parse_manual_transaction("/income 25000,50 Зарплата")
+
+    assert draft is not None
+    assert draft.direction == "income"
+    assert draft.amount == Decimal("25000.50")
+    assert draft.description == "Зарплата"
+    assert draft.income_type == "income"
+    assert parse_manual_transaction("/income -25 Зарплата") is None
+    assert parse_manual_transaction("/income 0 Зарплата") is None
+
+
+def test_telegram_income_uses_shared_service_and_persists_audit(
+    db_session: Session,
+) -> None:
+    family, user, account, _ = _seed_family(db_session)
+
+    reply = create_manual_transaction_text(
+        db_session,
+        context=_context(user, family, account),
+        text="/income 25000 Зарплата",
+    )
+
+    transaction = db_session.scalar(select(Transaction))
+    audit = db_session.scalar(select(AuditLog))
+    assert reply.startswith(MANUAL_CREATED_REVIEW_TEXT)
+    assert transaction is not None
+    assert transaction.family_id == family.id
+    assert transaction.owner_user_id == user.id
+    assert transaction.amount == Decimal("25000.00")
+    assert transaction.direction == "income"
+    assert transaction.flow_type == "income"
+    assert transaction.income_type == "income"
+    assert transaction.description_raw == "/income 25000 Зарплата"
+    assert transaction.description_override == "Зарплата"
+    assert audit is not None
+    assert audit.user_id == user.id
+    assert audit.family_id == family.id
+    assert audit.action == "create"
+    assert audit.after_payload["amount"] == "25000.00"
 
 
 def test_manual_transaction_uses_linked_user_family_default_and_aware_utc(

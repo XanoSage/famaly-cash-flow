@@ -89,11 +89,23 @@ only after a Family-scoped lookup; same-file repeats return the first row number
 
 ## Transactions
 
-- `GET /transactions` - список операций с фильтрами.
-- `GET /transactions/{id}` - одна операция.
-- `POST /transactions` - ручное создание операции.
-- `PATCH /transactions/{id}` - редактирование операции.
-- `DELETE /transactions/{id}` - soft delete операции.
+- `GET /transactions` - authenticated Family-scoped list with server pagination and date, account,
+  payment instrument, merchant, category, direction, currency, flow, scope, uncategorized, and review
+  filters. Deleted rows are excluded by default.
+- `GET /transactions/{id}` - one active transaction; foreign-family and soft-deleted rows return
+  the same not-found response.
+- `POST /transactions` - authenticated manual expense/income creation; client-supplied family IDs
+  are forbidden and the backend stores expense magnitudes as negative and income magnitudes as
+  positive `Decimal` values.
+- `PATCH /transactions/{id}` - family-scoped update of editable fields while preserving import
+  provenance.
+- `DELETE /transactions/{id}` - idempotent soft delete with actor and timestamp.
+
+All mutations run through the shared `TransactionService`, which is also used by Telegram manual
+entry and review callbacks. Each create/update/delete writes its `AuditLog` record in the same
+database transaction. Manual timestamps require an offset and are normalized to UTC; omitted
+timestamps use UTC now. See [Transactions API](transactions-api.md) for request, filter, and
+soft-delete details.
 
 ## Categories
 

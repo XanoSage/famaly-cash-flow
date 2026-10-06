@@ -113,7 +113,8 @@ Fields:
 - `import_batch_id`
 - `bank_transaction_id`
 - `occurred_at`
-- `amount`: signed amount in account currency
+- `amount`: signed `Decimal`/PostgreSQL `NUMERIC(14, 2)` in account currency; expenses are negative
+  and incomes are positive
 - `currency`: account currency
 - `transaction_amount`: original transaction amount from bank export
 - `transaction_currency`: original transaction currency from bank export
@@ -124,6 +125,7 @@ Fields:
 - `scope`: `family`, `personal_main_user`, `work_fop`
 - `description_raw`
 - `description_normalized`
+- `description_override`: user-edited display text; does not replace bank/import provenance
 - `bank_category_raw`
 - `merchant_id`
 - `category_id`
@@ -315,14 +317,16 @@ Fields:
 
 ## AuditLog
 
-Базовый audit log для важных изменений.
+Audit record for transaction mutations. Create/update/delete rows are written atomically with the
+transaction change. `before_payload` and `after_payload` hold a minimal snapshot; financial content
+in these fields is sensitive.
 
 Поля:
 
 - `id`
 - `family_id`
 - `user_id`
-- `entity_type`: `import_batch`, `transaction`, `categorization_rule`
+- `entity_type`: currently `transaction`
 - `entity_id`
 - `action`
 - `before_payload`

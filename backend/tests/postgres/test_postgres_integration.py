@@ -25,6 +25,7 @@ from app.importers.bank_xlsx import (
 )
 from app.main import app
 from app.models.account import Account
+from app.models.audit_log import AuditLog
 from app.models.category import Category
 from app.models.family import Family
 from app.models.import_batch import ImportBatch, ImportPreviewRow
@@ -39,6 +40,7 @@ from app.services.telegram_linking import (
     create_telegram_link,
     hash_telegram_link_token,
 )
+from app.services.transactions import TransactionService
 
 pytestmark = pytest.mark.postgres
 
@@ -557,6 +559,53 @@ def test_postgres_import_review_confirmation_and_decimal_persistence(
             )
             == 1
         )
+
+
+def test_postgres_manual_transaction_audit_and_soft_delete_persistence(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    family, user, account = _seed_user(postgres_session_factory, "manual-audit@example.test")
+    with postgres_session_factory() as db:
+        service = TransactionService(db)
+        transaction = service.create_expense(
+            user=user,
+            account_id=account.id,
+            amount=Decimal("1234.56"),
+            occurred_at=datetime(2026, 10, 5, 18, 45, tzinfo=UTC),
+            merchant_name="Synthetic PostgreSQL market",
+            comment="Synthetic audit integration test",
+        )
+        transaction_id = transaction.id
+        service.update(
+            user=user,
+            transaction_id=transaction_id,
+            changes={"amount": Decimal("1234.57"), "comment": "Updated synthetic comment"},
+        )
+        service.soft_delete(user=user, transaction_id=transaction_id)
+
+    with postgres_session_factory() as db:
+        retained = db.get(Transaction, transaction_id)
+        audits = db.scalars(
+            select(AuditLog)
+            .where(AuditLog.entity_type == "transaction", AuditLog.entity_id == transaction_id)
+            .order_by(AuditLog.created_at, AuditLog.action)
+        ).all()
+        assert retained is not None
+        _require_safe(
+            retained.amount == Decimal("-1234.57") and isinstance(retained.amount, Decimal),
+            "The PostgreSQL transaction amount did not retain its Decimal value.",
+        )
+        assert retained.deleted_at is not None
+        assert retained.deleted_by_user_id == user.id
+        assert retained.owner_user_id == user.id
+        assert len(audits) == 3
+        audits_by_action = {audit.action: audit for audit in audits}
+        assert set(audits_by_action) == {"create", "update", "delete"}
+        assert all(audit.family_id == family.id and audit.user_id == user.id for audit in audits)
+        assert audits_by_action["create"].after_payload["amount"] == "-1234.56"
+        assert audits_by_action["update"].before_payload["amount"] == "-1234.56"
+        assert audits_by_action["update"].after_payload["amount"] == "-1234.57"
+        assert audits_by_action["delete"].after_payload["deleted_by_user_id"] == str(user.id)
 
 
 def _seed_user(session_factory: sessionmaker[Session], email: str) -> tuple[Family, User, Account]:

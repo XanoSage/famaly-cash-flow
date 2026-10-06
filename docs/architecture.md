@@ -40,10 +40,15 @@ Telegram user
 ```
 
 The webhook maps immutable Telegram `from.id` through `TelegramIdentity`; it does not accept a
-family identifier from the update. Financial commands and callbacks require a private chat. Both
-clients use the existing analytics services and the shared transaction review and manual
-transaction services. PostgreSQL is the source of truth; link tokens are stored as SHA-256 hashes
-and consumed with a conditional update.
+family identifier from the update. Financial commands and callbacks require a private chat. Web
+mutations, Telegram manual expense/income entry, and Telegram review changes share
+`TransactionService`. This service owns family checks, amount sign normalization, UTC timestamps,
+merchant/category validation, soft deletion, and atomic `AuditLog` writes. PostgreSQL is the source
+of truth; link tokens are stored as SHA-256 hashes and consumed with a conditional update.
+
+Transaction edit history is append-only at the application level. Deleting a transaction sets
+`deleted_at` and `deleted_by_user_id`; default transaction queries and analytics omit deleted rows.
+Manual display-description edits use `description_override` so imported descriptions remain intact.
 
 Стек MVP:
 

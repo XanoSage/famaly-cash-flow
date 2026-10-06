@@ -3,12 +3,22 @@ import { test } from "node:test";
 
 import {
   apiUrl,
+  buildTransactionListUrl,
   clearAccessToken,
   confirmImport,
+  createTransaction,
+  deleteTransaction,
+  listTransactions,
   refreshAccessToken,
   signIn,
+  updateTransaction,
   uploadImportPreview,
 } from "../src/api.ts";
+import {
+  formatTransactionAmount,
+  isoToLocalDateTime,
+  localDateTimeToIso,
+} from "../src/transactions/logic.ts";
 import {
   buildBulkActionRequest,
   buildImportRowPatch,
@@ -86,6 +96,92 @@ test("changing category clears a previous subcategory", () => {
     subcategoryId: "",
     intentionalUncategorized: false,
   });
+});
+
+test("transaction filters include date bounds, scope, booleans, and server pagination", () => {
+  const url = buildTransactionListUrl("http://localhost:8000/api/v1/transactions", {
+    date_from: "2026-10-01",
+    date_to: "2026-10-31",
+    account_id: uuid,
+    category_id: "22222222-2222-4222-8222-222222222222",
+    uncategorized: false,
+    direction: "expense",
+    scope: "family",
+    needs_review: true,
+    offset: 50,
+    limit: 50,
+  });
+
+  assert.equal(url.searchParams.get("account_id"), uuid);
+  assert.equal(url.searchParams.get("category_id"), "22222222-2222-4222-8222-222222222222");
+  assert.equal(url.searchParams.get("uncategorized"), "false");
+  assert.equal(url.searchParams.get("needs_review"), "true");
+  assert.equal(url.searchParams.get("offset"), "50");
+  assert.equal(url.searchParams.get("limit"), "50");
+  assert.equal(url.searchParams.get("occurred_from"), new Date("2026-10-01T00:00:00").toISOString());
+  assert.equal(url.searchParams.get("occurred_to"), new Date("2026-10-31T23:59:59.999").toISOString());
+});
+
+test("manual transaction timestamps convert between local inputs and ISO offsets", () => {
+  const iso = localDateTimeToIso("2026-10-05T18:45");
+  assert.match(iso, /^2026-10-05T.*Z$/);
+  assert.equal(isoToLocalDateTime(iso), "2026-10-05T18:45");
+  assert.throws(() => localDateTimeToIso("not-a-date"));
+});
+
+test("transaction display formats Decimal strings without converting money to float", () => {
+  const expectedWhole = new Intl.NumberFormat("uk-UA", {
+    maximumFractionDigits: 0,
+    useGrouping: true,
+  }).format(999999999999n);
+  const formatted = formatTransactionAmount("-999999999999.99", "UAH", "uk");
+  assert.ok(formatted.includes(expectedWhole));
+  assert.ok(formatted.includes(",99"));
+  assert.ok(formatted.includes("−") || formatted.includes("-"));
+});
+
+test("transaction APIs send authenticated create, update, delete, and list requests", async () => {
+  clearAccessToken();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), init });
+    if (String(input).endsWith("/auth/login")) return tokenResponse();
+    if (init.method === "DELETE") return new Response(null, { status: 204 });
+    return new Response(JSON.stringify({ total: 0, offset: 0, limit: 25, rows: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    await signIn("demo@example.com", "synthetic-password");
+    const payload = {
+      direction: "income",
+      amount: "25000.00",
+      account_id: uuid,
+      occurred_at: "2026-10-05T15:45:00.000Z",
+      income_type: "income",
+      scope: "family",
+    };
+    await createTransaction(payload);
+    await updateTransaction(uuid, { amount: "25001.00", direction: "income" });
+    await deleteTransaction(uuid);
+    await listTransactions({ offset: 25, limit: 25, direction: "income", needs_review: false });
+
+    const createRequest = calls[1];
+    assert.equal(createRequest.init.method, "POST");
+    assert.equal(new Headers(createRequest.init.headers).get("Authorization"), "Bearer access-token");
+    assert.deepEqual(JSON.parse(createRequest.init.body), payload);
+    assert.equal(calls[2].init.method, "PATCH");
+    assert.equal(calls[3].init.method, "DELETE");
+    assert.match(calls[4].url, /offset=25/);
+    assert.match(calls[4].url, /limit=25/);
+    assert.match(calls[4].url, /needs_review=false/);
+    assert.equal(new Headers(calls[4].init.headers).get("Authorization"), "Bearer access-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAccessToken();
+  }
 });
 
 test("intentional uncategorized is sent as a distinct review decision", () => {

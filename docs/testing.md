@@ -25,7 +25,8 @@ Frontend:
 The default `python -m pytest -q` suite uses its existing SQLite fixtures and skips the tests under
 `backend/tests/postgres` unless explicitly enabled. These tests use a real PostgreSQL database and
 cover refresh-token rotation/concurrency, Telegram link-token consumption/concurrency/rollback,
-import review and confirmation with Decimal persistence, and PostgreSQL unique/FK constraints.
+import review/confirmation and Decimal persistence, transaction create/update/delete audit persistence
+with soft-delete retention, and PostgreSQL unique/FK constraints.
 
 The PostgreSQL fixture requires all of the following:
 
@@ -41,6 +42,13 @@ GitHub Actions provisions PostgreSQL 18.6, upgrades the live database, downgrade
 revision and upgrades it again, then runs the marked integration suite. See
 [`current-state-2026-10.md`](current-state-2026-10.md) for local commands and the verified run
 results.
+
+## Web transaction helpers
+
+Node tests cover authenticated transaction list/create/update/delete requests, date and pagination
+filters, browser-local timestamp conversion to offset-aware ISO timestamps, and exact formatting of
+Decimal amount strings without converting money to floating point. There is no React rendering or
+browser-to-PostgreSQL test harness yet.
 
 ## Что тестировать в первую очередь
 

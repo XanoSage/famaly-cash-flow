@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.models.user import User
 from app.services.transaction_review import (
     CategoryNotFoundError,
     TransactionNotFoundError,
@@ -50,6 +51,7 @@ def mark_reviewed_text(
     db: Session,
     family_id: UUID,
     transaction_id_value: str | None,
+    user: User | None = None,
 ) -> str:
     transaction_id = _parse_uuid(transaction_id_value)
     if transaction_id is None:
@@ -58,6 +60,7 @@ def mark_reviewed_text(
         changed = TransactionReviewService(db).mark_reviewed(
             family_id=family_id,
             transaction_id=transaction_id,
+            user=user,
         )
     except TransactionNotFoundError:
         return REVIEW_TRANSACTION_NOT_FOUND_TEXT
@@ -97,6 +100,7 @@ def assign_category_text(
     family_id: UUID,
     transaction_id_value: str | None,
     category_id_value: str | None,
+    user: User | None = None,
 ) -> str:
     transaction_id = _decode_uuid_token(transaction_id_value)
     category_id = _decode_uuid_token(category_id_value)
@@ -107,6 +111,7 @@ def assign_category_text(
             family_id=family_id,
             transaction_id=transaction_id,
             category_id=category_id,
+            user=user,
         )
     except TransactionNotFoundError:
         return REVIEW_TRANSACTION_NOT_FOUND_TEXT
