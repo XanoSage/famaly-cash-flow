@@ -149,7 +149,7 @@ Commands were run in Windows PowerShell from the listed directories.
 | repository root | `Get-Command docker -ErrorAction SilentlyContinue` | **Unavailable:** no Docker CLI; Compose and live local PostgreSQL checks could not run. |
 | repository root | `git diff --check` | **Passed.** |
 | GitHub Actions | Cash Ledger run `37456959592` (`6dfeead`) | **Passed:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
-| GitHub Actions | Full-stack readiness run [37463724854](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37463724854), commit `46e4ed0679186e9714e0aef4469d810773a70f4f` | **Passed all four jobs:** backend tests/changed-file Ruff, PostgreSQL migration and integration, frontend tests/build, and full-stack browser E2E. The PostgreSQL job ran 7 integration tests successfully; the Playwright 1.63.0 Chromium journey passed 1 test in 8.2 seconds against PostgreSQL 18.6. The whole workflow completed in 1m 22s. |
+| GitHub Actions | Full-stack readiness run [37464340923](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37464340923), commit `5a610b8369e3dba29f456f9320bf12cb29d2e965` | **Passed all four jobs:** backend tests/changed-file Ruff, PostgreSQL migration and integration, frontend tests/build, and full-stack browser E2E. The PostgreSQL job ran 7 integration tests successfully; the Playwright 1.63.0 Chromium journey passed 1 test in 6.5 seconds against PostgreSQL 18.6. The whole workflow completed in 1m 26s. |
 
 ## Recommended Next Task
 

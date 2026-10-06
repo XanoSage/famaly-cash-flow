@@ -69,10 +69,10 @@ The initial PostgreSQL integration workflow run [37363137308](https://github.com
 passed all three then-existing jobs on commit `d44217831d37df67e0ecc64df800046b507ca07c`, including
 PostgreSQL 18.6 migrations and five marked integration tests.
 
-The full four-job workflow passed in run [37463724854](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37463724854)
-on commit `46e4ed0679186e9714e0aef4469d810773a70f4f`. It ran seven PostgreSQL integration tests,
-and the full-stack Playwright 1.63.0/Chromium journey passed against a freshly migrated PostgreSQL
-18.6 database. The workflow duration was 1m 22s; detailed results are recorded in
+The full four-job workflow passed in run [37464340923](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37464340923)
+on commit `5a610b8369e3dba29f456f9320bf12cb29d2e965`. It ran seven PostgreSQL integration tests,
+and the full-stack Playwright 1.63.0/Chromium journey passed one browser test against a freshly
+migrated PostgreSQL 18.6 database. The workflow duration was 1m 26s; detailed results are recorded in
 [`current-state-2026-10.md`](current-state-2026-10.md).
 
 ## Branching
