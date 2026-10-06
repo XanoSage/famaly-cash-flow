@@ -110,8 +110,8 @@ class ConfirmImportService:
                 Account.family_id == family_id,
             )
         )
-        if account is None:
-            raise ConfirmImportError("Account not found.")
+        if account is None or not account.is_active or account.type == "cash":
+            raise ConfirmImportError("Select an active non-cash account for the bank import.")
         return account
 
     def _get_preview_rows(self, import_batch_id: UUID) -> list[ImportPreviewRow]:
@@ -134,7 +134,9 @@ class ConfirmImportService:
             )
 
         flow_type = row.proposed_flow_type or "other"
-        direction = _direction_from_amount(row.amount)
+        direction = (
+            "transfer" if flow_type == "cash_withdrawal" else _direction_from_amount(row.amount)
+        )
         merchant = self._get_or_create_merchant(import_batch.family_id, row.merchant_name)
         payment_instrument = self._get_or_create_payment_instrument(
             account.id, row.payment_instrument_label

@@ -78,6 +78,23 @@ UI показывает:
 - предполагаемый остаток;
 - пометку, что баланс может быть неточным.
 
+The implemented MVP uses one idempotently created, family-owned UAH cash wallet. Its approximate
+balance is the sum of non-deleted wallet transaction amounts; there is no separate mutable balance
+table. A withdrawal is represented as one negative source-account transfer leg and one matching
+positive wallet leg. Family income/expense analytics exclude both legs and count the logical transfer
+once. A later cash purchase is one ordinary wallet expense and counts as a family expense once.
+
+Web provides a Cash page to create the wallet, record a withdrawal from an active same-currency
+non-cash account, record a cash expense with category/scope/comment, and review recent wallet
+activity. An eligible imported ATM withdrawal can be linked to the wallet: the imported source row is
+reclassified as a transfer and only the destination leg is created. This avoids duplicating the bank
+debit. The linked legs are atomic and paired for soft deletion; generic edits are blocked so one leg
+cannot be changed independently.
+
+Telegram `/cash 450 Рынок` records a cash expense through the same `TransactionService`. If the
+family wallet has not been created, the bot asks the user to create it in Web. Telegram cash entries
+use the service's UTC timestamp default. Bank-import wall-time handling remains unchanged.
+
 ## Forgotten Cash Expenses
 
 В MVP:

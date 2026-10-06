@@ -608,6 +608,78 @@ def test_postgres_manual_transaction_audit_and_soft_delete_persistence(
         assert audits_by_action["delete"].after_payload["deleted_by_user_id"] == str(user.id)
 
 
+def test_postgres_cash_transfer_decimal_linkage_audit_and_pair_delete(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    family, user, card = _seed_user(postgres_session_factory, "cash-ledger@example.test")
+    with postgres_session_factory() as db:
+        service = TransactionService(db)
+        wallet = service.ensure_cash_wallet(user=user)
+        assert service.ensure_cash_wallet(user=user).id == wallet.id
+        source, destination = service.create_cash_withdrawal(
+            user=user,
+            source_account_id=card.id,
+            amount=Decimal("5000.00"),
+            occurred_at=datetime(2026, 10, 6, 9, tzinfo=UTC),
+        )
+        expense = service.create_cash_expense(
+            user=user,
+            amount=Decimal("0.01"),
+            occurred_at=datetime(2026, 10, 6, 10, tzinfo=UTC),
+            merchant_name="Synthetic cash purchase",
+        )
+        _require_safe(
+            service.cash_wallet_balance(user=user) == Decimal("4999.99"),
+            "PostgreSQL cash wallet balance did not preserve Decimal precision.",
+        )
+        transfer_group_id = source.transfer_group_id
+        source_id = source.id
+        destination_id = destination.id
+        expense_id = expense.id
+
+    with postgres_session_factory() as db:
+        source = db.get(Transaction, source_id)
+        destination = db.get(Transaction, destination_id)
+        expense = db.get(Transaction, expense_id)
+        audit_count = db.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.entity_id.in_([source_id, destination_id]))
+        )
+        assert source is not None and destination is not None and expense is not None
+        _require_safe(
+            source.amount == Decimal("-5000.00")
+            and destination.amount == Decimal("5000.00")
+            and expense.amount == Decimal("-0.01")
+            and all(isinstance(row.amount, Decimal) for row in (source, destination, expense)),
+            "PostgreSQL NUMERIC values were not returned as Decimal with the expected signs.",
+        )
+        _require_safe(
+            source.transfer_group_id == destination.transfer_group_id == transfer_group_id
+            and {source.transfer_role, destination.transfer_role} == {"source", "destination"},
+            "PostgreSQL did not persist the linked cash withdrawal pair.",
+        )
+        TransactionService(db).soft_delete(user=user, transaction_id=destination_id)
+
+    with postgres_session_factory() as db:
+        source = db.get(Transaction, source_id)
+        destination = db.get(Transaction, destination_id)
+        audits = db.scalars(
+            select(AuditLog).where(
+                AuditLog.entity_id.in_([source_id, destination_id]),
+                AuditLog.action == "delete",
+            )
+        ).all()
+        assert source is not None and destination is not None
+        assert source.deleted_at is not None and destination.deleted_at is not None
+        assert len(audits) == 2
+        assert audit_count == 2
+        _require_safe(
+            source.family_id == destination.family_id == family.id,
+            "The PostgreSQL transfer legs did not remain in their family.",
+        )
+
+
 def _seed_user(session_factory: sessionmaker[Session], email: str) -> tuple[Family, User, Account]:
     family = Family(name="Synthetic integration family")
     user = User(

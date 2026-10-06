@@ -6,9 +6,14 @@ import {
   buildTransactionListUrl,
   clearAccessToken,
   confirmImport,
+  createCashExpense,
+  createCashWithdrawal,
   createTransaction,
   deleteTransaction,
   listTransactions,
+  ensureCashWallet,
+  getCashSummary,
+  linkImportedCashWithdrawal,
   refreshAccessToken,
   signIn,
   updateTransaction,
@@ -71,6 +76,60 @@ test("upload calls the authenticated preview endpoint with the selected XLSX", a
     assert.equal(new Headers(request.init.headers).get("Authorization"), "Bearer access-token");
     assert.equal(request.init.body.get("file").name, "synthetic-statement.xlsx");
     assert.equal(result.summary.import_batch_id, uuid);
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAccessToken();
+  }
+});
+
+test("cash ledger API sends Decimal amount strings through authenticated routes", async () => {
+  clearAccessToken();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.endsWith("/auth/login")) return tokenResponse();
+    if (url.endsWith("/accounts/cash-wallet")) {
+      return new Response(JSON.stringify({ id: uuid, name: "Family cash wallet", currency: "UAH" }), { status: 200 });
+    }
+    if (url.endsWith("/cash/summary")) {
+      return new Response(JSON.stringify({ wallet: { id: uuid, currency: "UAH" }, balance: "5000.00", recent_operations: [] }), { status: 200 });
+    }
+    if (url.endsWith("/cash/expenses")) {
+      return new Response(JSON.stringify({ id: uuid, amount: "-0.01", currency: "UAH" }), { status: 201 });
+    }
+    if (url.endsWith("/cash/transfers")) {
+      return new Response(JSON.stringify({ cash_balance: "5000.00" }), { status: 201 });
+    }
+    return new Response(null, { status: 201 });
+  };
+  try {
+    await signIn("demo@example.com", "synthetic-password");
+    const wallet = await ensureCashWallet();
+    const summary = await getCashSummary();
+    const expense = await createCashExpense({
+      amount: "0.01",
+      occurred_at: "2026-10-06T10:00:00Z",
+      scope: "family",
+    });
+    const withdrawal = await createCashWithdrawal({
+      source_account_id: uuid,
+      amount: "5000.00",
+      occurred_at: "2026-10-06T09:00:00Z",
+    });
+    await linkImportedCashWithdrawal(uuid);
+
+    assert.equal(wallet.id, uuid);
+    assert.equal(summary.balance, "5000.00");
+    assert.equal(expense.amount, "-0.01");
+    assert.equal(withdrawal.cash_balance, "5000.00");
+    assert.equal(calls[1].url.endsWith("/accounts/cash-wallet"), true);
+    assert.equal(calls[1].init.method, "POST");
+    assert.equal(JSON.parse(calls[3].init.body).amount, "0.01");
+    assert.equal(JSON.parse(calls[4].init.body).amount, "5000.00");
+    assert.equal(calls[5].url.endsWith(`/cash/imported-withdrawals/${uuid}/link`), true);
+    assert.equal(new Headers(calls[5].init.headers).get("Authorization"), "Bearer access-token");
   } finally {
     globalThis.fetch = originalFetch;
     clearAccessToken();

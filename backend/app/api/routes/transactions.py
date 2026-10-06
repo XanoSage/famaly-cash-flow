@@ -271,6 +271,8 @@ def _to_response(transaction: Transaction) -> TransactionResponse:
         balance_after=transaction.balance_after,
         direction=transaction.direction,
         flow_type=transaction.flow_type,
+        transfer_group_id=transaction.transfer_group_id,
+        transfer_role=transaction.transfer_role,
         income_type=transaction.income_type,
         scope=transaction.scope,
         description_raw=transaction.description_raw,

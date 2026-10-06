@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.analytics.merchants import _share_percent
-from app.analytics.summary import TRANSFER_FLOW_TYPES
+from app.analytics.transfer_semantics import TRANSFER_FLOW_TYPES
 from app.models.transaction import Transaction
 
 UNCATEGORIZED_KEY = "uncategorized"

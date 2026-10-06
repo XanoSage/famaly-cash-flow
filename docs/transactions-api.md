@@ -53,3 +53,22 @@ timezone policy remains open.
 The Web Transactions page supports RU/UK labels, date/account/category/scope/direction/review filters,
 server pagination, expense/income creation, editing, and confirmed soft deletion. It uses the same
 authenticated API client and refresh behavior as the rest of the Web app.
+
+## Cash Ledger
+
+The authenticated `/api/v1/cash/summary` returns the family's active UAH cash wallet, the approximate
+balance (the sum of active wallet transactions), and the 15 most recent wallet operations. If the
+wallet does not exist, the summary returns `wallet: null` and a zero balance. The Web can create it
+idempotently with `POST /api/v1/accounts/cash-wallet`.
+
+`POST /api/v1/cash/transfers` records a withdrawal as two rows in one database transaction: a
+negative `cash_withdrawal` transfer leg on the selected non-cash account and a matching positive leg
+on the wallet. It is excluded from family income/expense totals; family transfer volume/count includes
+the logical withdrawal once. `POST /api/v1/cash/imported-withdrawals/{transaction_id}/link` links an
+eligible imported ATM row and adds only its wallet-side counterpart, preserving the bank row and
+avoiding a second debit.
+
+`POST /api/v1/cash/expenses` records a normal negative expense on the wallet. Its expense appears
+once in family analytics and reduces the approximate wallet balance. Transfer pairs cannot be
+edited through the generic transaction patch route; soft-deleting either leg soft-deletes both legs
+and writes both audit rows atomically.

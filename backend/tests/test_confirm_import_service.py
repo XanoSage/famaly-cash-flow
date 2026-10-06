@@ -90,6 +90,74 @@ def test_confirm_import_blocks_error_rows(db_session: Session) -> None:
     assert db_session.query(Transaction).count() == 0
 
 
+def test_confirmed_atm_withdrawal_is_a_transfer_not_a_family_expense(db_session: Session) -> None:
+    family, user, account = _create_family_user_and_account(db_session)
+    row = ParsedBankOperation(
+        row_number=3,
+        status="needs_review",
+        reason_codes=["cash_withdrawal"],
+        occurred_at=datetime(2026, 10, 6, 10, 0),
+        amount=Decimal("-5000.00"),
+        currency="UAH",
+        transaction_amount=Decimal("5000.00"),
+        transaction_currency="UAH",
+        balance_after=Decimal("10000.00"),
+        payment_instrument_label="Card ****1234",
+        bank_category_raw="Зняття готівки",
+        description_raw="ATM cash withdrawal",
+        merchant_name="ATM cash withdrawal",
+        proposed_flow_type="cash_withdrawal",
+        proposed_scope="family",
+        confidence=Decimal("0.8000"),
+        error_message=None,
+        normalized_payload={"direction": "expense"},
+    )
+    batch = ImportPreviewService(db_session).create_from_parsed_statement(
+        family_id=family.id,
+        uploaded_by_user_id=user.id,
+        parsed_statement=_statement([row], error_count=0),
+    )
+
+    imported = ConfirmImportService(db_session).confirm(
+        family_id=family.id,
+        import_batch_id=batch.id,
+        account_id=account.id,
+    )
+
+    assert len(imported) == 1
+    assert imported[0].amount == Decimal("-5000.00")
+    assert imported[0].direction == "transfer"
+    assert imported[0].flow_type == "cash_withdrawal"
+
+
+def test_confirm_import_rejects_cash_wallet_as_bank_statement_source(db_session: Session) -> None:
+    family, user, _ = _create_family_user_and_account(db_session)
+    cash_wallet = Account(
+        family=family,
+        owner_user=None,
+        type="cash",
+        name="Family cash wallet",
+        currency="UAH",
+    )
+    db_session.add(cash_wallet)
+    db_session.commit()
+    batch = ImportPreviewService(db_session).create_from_parsed_statement(
+        family_id=family.id,
+        uploaded_by_user_id=user.id,
+        parsed_statement=_parsed_statement(),
+    )
+
+    with pytest.raises(ConfirmImportError, match="active non-cash account"):
+        ConfirmImportService(db_session).confirm(
+            family_id=family.id,
+            import_batch_id=batch.id,
+            account_id=cash_wallet.id,
+        )
+
+    assert batch.status == "draft"
+    assert db_session.query(Transaction).count() == 0
+
+
 def _create_family_user_and_account(db_session: Session) -> tuple[Family, User, Account]:
     family = Family(name="Test Family")
     user = User(

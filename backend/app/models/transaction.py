@@ -5,7 +5,15 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, created_at, updated_at, uuid_pk
@@ -24,6 +32,19 @@ class Transaction(Base):
     __table_args__ = (
         UniqueConstraint(
             "family_id", "bank_transaction_id", name="uq_transactions_family_id_bank_transaction_id"
+        ),
+        UniqueConstraint(
+            "transfer_group_id",
+            "transfer_role",
+            name="uq_transactions_transfer_group_role",
+        ),
+        CheckConstraint(
+            "(transfer_group_id IS NULL AND transfer_role IS NULL) OR "
+            "(transfer_group_id IS NOT NULL AND direction = 'transfer' "
+            "AND flow_type = 'cash_withdrawal' AND "
+            "((transfer_role = 'source' AND amount < 0) OR "
+            "(transfer_role = 'destination' AND amount > 0)))",
+            name="cash_withdrawal_transfer_link_valid",
         ),
     )
 
@@ -46,6 +67,8 @@ class Transaction(Base):
     balance_after: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     direction: Mapped[str] = mapped_column(String(32), nullable=False)
     flow_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    transfer_group_id: Mapped[UUID | None] = mapped_column(nullable=True)
+    transfer_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
     income_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     scope: Mapped[str] = mapped_column(String(64), default="family", nullable=False)
     description_raw: Mapped[str | None] = mapped_column(Text, nullable=True)

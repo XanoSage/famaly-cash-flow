@@ -27,6 +27,8 @@ The default `python -m pytest -q` suite uses its existing SQLite fixtures and sk
 cover refresh-token rotation/concurrency, Telegram link-token consumption/concurrency/rollback,
 import review/confirmation and Decimal persistence, transaction create/update/delete audit persistence
 with soft-delete retention, and PostgreSQL unique/FK constraints.
+The Cash Ledger integration case additionally verifies the active-wallet uniqueness path, linked
+withdrawal Decimal persistence, paired audit records, and paired soft deletion against PostgreSQL.
 
 The PostgreSQL fixture requires all of the following:
 
@@ -47,8 +49,9 @@ results.
 
 Node tests cover authenticated transaction list/create/update/delete requests, date and pagination
 filters, browser-local timestamp conversion to offset-aware ISO timestamps, and exact formatting of
-Decimal amount strings without converting money to floating point. There is no React rendering or
-browser-to-PostgreSQL test harness yet.
+Decimal amount strings without converting money to floating point. They also cover Cash Ledger API
+request paths and string-valued Decimal payloads. There is no React rendering or browser-to-PostgreSQL
+test harness yet.
 
 ## Что тестировать в первую очередь
 

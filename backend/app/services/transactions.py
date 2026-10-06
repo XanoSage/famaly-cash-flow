@@ -3,14 +3,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.account import Account
 from app.models.audit_log import AuditLog
 from app.models.category import Category, Subcategory
+from app.models.family import Family
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -54,6 +56,8 @@ AUDIT_SNAPSHOT_FIELDS = (
     "comment",
     "needs_review",
     "is_cash",
+    "transfer_group_id",
+    "transfer_role",
 )
 
 
@@ -74,6 +78,252 @@ class TransactionService:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def get_cash_wallet(self, *, user: User) -> Account | None:
+        actor = self._get_actor(user)
+        return self._cash_wallet(actor.family_id)
+
+    def ensure_cash_wallet(self, *, user: User) -> Account:
+        actor = self._get_actor(user)
+        family = self.db.scalar(
+            select(Family).where(Family.id == actor.family_id).with_for_update()
+        )
+        if family is None:
+            raise TransactionValidationError("Family is not available.")
+        wallet = self._cash_wallet(actor.family_id)
+        if wallet is not None:
+            return wallet
+
+        wallet = Account(
+            family_id=actor.family_id,
+            owner_user_id=None,
+            type="cash",
+            name="Family cash wallet",
+            currency="UAH",
+            is_active=True,
+        )
+        self.db.add(wallet)
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            wallet = self._cash_wallet(actor.family_id)
+            if wallet is None:
+                raise
+            return wallet
+        self.db.refresh(wallet)
+        return wallet
+
+    def cash_wallet_balance(self, *, user: User) -> Decimal:
+        actor = self._get_actor(user)
+        wallet = self._cash_wallet(actor.family_id)
+        if wallet is None:
+            return Decimal("0.00")
+        balance = self.db.scalar(
+            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+                Transaction.family_id == actor.family_id,
+                Transaction.account_id == wallet.id,
+                Transaction.deleted_at.is_(None),
+            )
+        )
+        return Decimal(balance or 0).quantize(CENT)
+
+    def create_cash_expense(
+        self,
+        *,
+        user: User,
+        amount: Decimal,
+        occurred_at: datetime | None = None,
+        merchant_name: str | None = None,
+        category_id: UUID | None = None,
+        subcategory_id: UUID | None = None,
+        scope: str = "family",
+        comment: str | None = None,
+        raw_text: str | None = None,
+    ) -> Transaction:
+        actor = self._get_actor(user)
+        wallet = self._cash_wallet(actor.family_id)
+        if wallet is None:
+            raise TransactionValidationError(
+                "Create the family cash wallet in Web before recording cash expenses."
+            )
+        return self.create_expense(
+            user=actor,
+            account_id=wallet.id,
+            amount=amount,
+            occurred_at=occurred_at,
+            merchant_name=merchant_name,
+            category_id=category_id,
+            subcategory_id=subcategory_id,
+            flow_type="cash_expense",
+            scope=scope,
+            comment=comment,
+            raw_text=raw_text,
+        )
+
+    def create_cash_withdrawal(
+        self,
+        *,
+        user: User,
+        source_account_id: UUID,
+        amount: Decimal,
+        occurred_at: datetime | None = None,
+        description: str | None = None,
+        comment: str | None = None,
+    ) -> tuple[Transaction, Transaction]:
+        actor = self._get_actor(user)
+        magnitude = _positive_amount(amount)
+        source_account = self._get_active_account(source_account_id, actor.family_id)
+        if source_account.type == "cash":
+            raise TransactionValidationError("Choose a non-cash source account.")
+        wallet = self._require_cash_wallet(actor.family_id)
+        if source_account.id == wallet.id:
+            raise TransactionValidationError("Source and cash wallet must be different accounts.")
+        if source_account.currency != wallet.currency:
+            raise TransactionValidationError(
+                "Source account and cash wallet currencies must match."
+            )
+
+        timestamp = _aware_utc(occurred_at) if occurred_at is not None else datetime.now(UTC)
+        clean_description = _clean_merchant_name(description)
+        clean_comment = _clean_optional_text(comment)
+        group_id = uuid4()
+        source = Transaction(
+            family_id=actor.family_id,
+            account_id=source_account.id,
+            owner_user_id=actor.id,
+            occurred_at=timestamp,
+            amount=-magnitude,
+            currency=source_account.currency,
+            direction="transfer",
+            flow_type="cash_withdrawal",
+            scope="family",
+            description_raw=clean_description,
+            description_normalized=normalize_review_text(clean_description) or None,
+            description_override=clean_description,
+            comment=clean_comment,
+            is_cash=False,
+            needs_review=False,
+            transfer_group_id=group_id,
+            transfer_role="source",
+        )
+        destination = Transaction(
+            family_id=actor.family_id,
+            account_id=wallet.id,
+            owner_user_id=actor.id,
+            occurred_at=timestamp,
+            amount=magnitude,
+            currency=wallet.currency,
+            direction="transfer",
+            flow_type="cash_withdrawal",
+            scope="family",
+            description_raw=clean_description,
+            description_normalized=normalize_review_text(clean_description) or None,
+            description_override=clean_description,
+            comment=clean_comment,
+            is_cash=True,
+            needs_review=False,
+            transfer_group_id=group_id,
+            transfer_role="destination",
+        )
+        self.db.add_all([source, destination])
+        self.db.flush()
+        self._commit_audits(
+            [
+                (source, actor, "create", None, _snapshot(source)),
+                (destination, actor, "create", None, _snapshot(destination)),
+            ]
+        )
+        return self._refresh(source), self._refresh(destination)
+
+    def link_imported_cash_withdrawal(
+        self,
+        *,
+        user: User,
+        transaction_id: UUID,
+    ) -> tuple[Transaction, Transaction]:
+        actor = self._get_actor(user)
+        source = self._load_transaction(
+            family_id=actor.family_id,
+            transaction_id=transaction_id,
+            include_deleted=False,
+            lock=True,
+        )
+        if source is None:
+            raise TransactionNotFoundError("Transaction not found.")
+        if (
+            source.import_batch_id is None
+            or source.flow_type != "cash_withdrawal"
+            or source.direction not in {"expense", "transfer"}
+            or source.amount >= 0
+        ):
+            raise TransactionValidationError("Select an imported cash withdrawal expense.")
+        if source.transfer_group_id is not None:
+            raise TransactionValidationError("This cash withdrawal is already linked.")
+
+        source_account = self._get_active_account(source.account_id, actor.family_id)
+        if source_account.type == "cash":
+            raise TransactionValidationError("The imported withdrawal must use a non-cash account.")
+        wallet = self._require_cash_wallet(actor.family_id)
+        if source_account.id == wallet.id:
+            raise TransactionValidationError("Source and cash wallet must be different accounts.")
+        if source.currency != wallet.currency or source_account.currency != wallet.currency:
+            raise TransactionValidationError(
+                "Source transaction and cash wallet currencies must match."
+            )
+
+        before_payload = _snapshot(source)
+        group_id = uuid4()
+        source.direction = "transfer"
+        source.transfer_group_id = group_id
+        source.transfer_role = "source"
+        source.needs_review = False
+        destination = Transaction(
+            family_id=actor.family_id,
+            account_id=wallet.id,
+            owner_user_id=actor.id,
+            occurred_at=source.occurred_at,
+            amount=abs(source.amount),
+            currency=wallet.currency,
+            direction="transfer",
+            flow_type="cash_withdrawal",
+            scope=source.scope,
+            description_raw=source.description_raw,
+            description_normalized=source.description_normalized,
+            description_override=source.description_override,
+            comment=source.comment,
+            is_cash=True,
+            needs_review=False,
+            transfer_group_id=group_id,
+            transfer_role="destination",
+        )
+        self.db.add(destination)
+        self.db.flush()
+        self._commit_audits(
+            [
+                (source, actor, "cash_withdrawal_linked", before_payload, _snapshot(source)),
+                (destination, actor, "create", None, _snapshot(destination)),
+            ]
+        )
+        return self._refresh(source), self._refresh(destination)
+
+    def _cash_wallet(self, family_id: UUID) -> Account | None:
+        return self.db.scalar(
+            select(Account).where(
+                Account.family_id == family_id,
+                Account.type == "cash",
+                Account.currency == "UAH",
+                Account.is_active.is_(True),
+            )
+        )
+
+    def _require_cash_wallet(self, family_id: UUID) -> Account:
+        wallet = self._cash_wallet(family_id)
+        if wallet is None:
+            raise TransactionValidationError(
+                "Create the family cash wallet in Web before recording cash operations."
+            )
+        return wallet
 
     def create_expense(
         self,
@@ -183,6 +433,11 @@ class TransactionService:
         )
         if transaction is None:
             raise TransactionNotFoundError("Transaction not found.")
+        if transaction.transfer_group_id is not None and changes:
+            raise TransactionValidationError(
+                "Cash withdrawal transfer legs cannot be edited. "
+                "Delete the pair and record it again."
+            )
         if not changes:
             return transaction
 
@@ -316,20 +571,38 @@ class TransactionService:
         if transaction.deleted_at is not None:
             return transaction
 
+        pair = [transaction]
+        if transaction.transfer_group_id is not None:
+            pair = self.db.scalars(
+                select(Transaction)
+                .where(
+                    Transaction.family_id == actor.family_id,
+                    Transaction.transfer_group_id == transaction.transfer_group_id,
+                )
+                .with_for_update()
+            ).all()
+        active_pair = [item for item in pair if item.deleted_at is None]
+        if not active_pair:
+            return transaction
+
         now = datetime.now(UTC)
-        before_payload = {"deleted_at": None, "deleted_by_user_id": None}
-        transaction.deleted_at = now
-        transaction.deleted_by_user_id = actor.id
-        self._commit_with_audit(
-            transaction,
-            actor=actor,
-            action="delete",
-            before_payload=before_payload,
-            after_payload={
-                "deleted_at": now.isoformat(),
-                "deleted_by_user_id": str(actor.id),
-            },
-        )
+        audits = []
+        for item in active_pair:
+            item.deleted_at = now
+            item.deleted_by_user_id = actor.id
+            audits.append(
+                (
+                    item,
+                    actor,
+                    "delete",
+                    {"deleted_at": None, "deleted_by_user_id": None},
+                    {
+                        "deleted_at": now.isoformat(),
+                        "deleted_by_user_id": str(actor.id),
+                    },
+                )
+            )
+        self._commit_audits(audits)
         return self._refresh(transaction)
 
     def _create_manual(
@@ -514,16 +787,33 @@ class TransactionService:
         before_payload: dict[str, Any] | None,
         after_payload: dict[str, Any] | None,
     ) -> None:
-        self.db.add(
-            AuditLog(
-                family_id=transaction.family_id,
-                user_id=actor.id,
-                entity_type="transaction",
-                entity_id=transaction.id,
-                action=action,
-                before_payload=before_payload,
-                after_payload=after_payload,
-            )
+        self._commit_audits([(transaction, actor, action, before_payload, after_payload)])
+
+    def _commit_audits(
+        self,
+        entries: list[
+            tuple[
+                Transaction,
+                User,
+                str,
+                dict[str, Any] | None,
+                dict[str, Any] | None,
+            ]
+        ],
+    ) -> None:
+        self.db.add_all(
+            [
+                AuditLog(
+                    family_id=transaction.family_id,
+                    user_id=actor.id,
+                    entity_type="transaction",
+                    entity_id=transaction.id,
+                    action=action,
+                    before_payload=before_payload,
+                    after_payload=after_payload,
+                )
+                for transaction, actor, action, before_payload, after_payload in entries
+            ]
         )
         try:
             self.db.commit()
