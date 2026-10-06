@@ -131,6 +131,7 @@ def telegram_webhook(
             db,
             context.family.id,
             transaction_id,
+            context.user,
         ),
         review_categories_text_provider=lambda context, transaction_id: build_category_menu_content(
             db,
@@ -143,6 +144,7 @@ def telegram_webhook(
                 context.family.id,
                 transaction_id,
                 category_id,
+                context.user,
             )
         ),
         account_text_provider=lambda context: build_account_selection(db, context),

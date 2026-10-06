@@ -78,6 +78,21 @@ def test_unlinked_sender_cannot_read_summary() -> None:
     assert replies == [BotReply(chat_id=42, text=UNLINKED_TELEGRAM_TEXT)]
 
 
+def test_income_command_is_dispatched_to_the_linked_private_chat_text_handler() -> None:
+    context = _context()
+    received: list[tuple[TelegramRequestContext, str]] = []
+    replies = dispatch_update(
+        _update("/income 25000 Зарплата"),
+        context_resolver=lambda *_: context,
+        text_message_provider=lambda actual, text: (
+            received.append((actual, text)) or "Income saved"
+        ),
+    )
+
+    assert received == [(context, "/income 25000 Зарплата")]
+    assert replies == [BotReply(chat_id=42, text="Income saved")]
+
+
 def test_sensitive_group_command_returns_only_private_chat_instruction() -> None:
     called = False
 

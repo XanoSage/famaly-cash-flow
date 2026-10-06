@@ -22,15 +22,21 @@ if TYPE_CHECKING:
 class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
-        UniqueConstraint("family_id", "bank_transaction_id", name="uq_transactions_family_id_bank_transaction_id"),
+        UniqueConstraint(
+            "family_id", "bank_transaction_id", name="uq_transactions_family_id_bank_transaction_id"
+        ),
     )
 
     id: Mapped[uuid_pk]
     family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id"), nullable=False)
     account_id: Mapped[UUID] = mapped_column(ForeignKey("accounts.id"), nullable=False)
-    payment_instrument_id: Mapped[UUID | None] = mapped_column(ForeignKey("payment_instruments.id"), nullable=True)
+    payment_instrument_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("payment_instruments.id"), nullable=True
+    )
     owner_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("import_batches.id"), nullable=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("import_batches.id"), nullable=True
+    )
     bank_transaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
@@ -44,10 +50,13 @@ class Transaction(Base):
     scope: Mapped[str] = mapped_column(String(64), default="family", nullable=False)
     description_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
     description_normalized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     bank_category_raw: Mapped[str | None] = mapped_column(String(160), nullable=True)
     merchant_id: Mapped[UUID | None] = mapped_column(ForeignKey("merchants.id"), nullable=True)
     category_id: Mapped[UUID | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
-    subcategory_id: Mapped[UUID | None] = mapped_column(ForeignKey("subcategories.id"), nullable=True)
+    subcategory_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("subcategories.id"), nullable=True
+    )
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_cash: Mapped[bool] = mapped_column(default=False, nullable=False)
     is_duplicate_candidate: Mapped[bool] = mapped_column(default=False, nullable=False)
