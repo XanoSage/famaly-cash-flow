@@ -91,7 +91,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   await newMerchantRow.getByRole("button", { name: "Проверить" }).click();
 
   const importEditor = page.getByRole("dialog", { name: "E2E New Merchant" });
-  await importEditor.getByLabel("Категория").selectOption({ label: "Еда" });
+  await importEditor.getByLabel("Категория", { exact: true }).selectOption({ label: "Еда" });
   await importEditor.getByLabel("Запомнить для будущих импортов").check();
   const saveReview = page.waitForResponse((response) =>
     response.request().method() === "PATCH"
@@ -257,7 +257,7 @@ test("authenticated Web MVP works from XLSX import through cash ledger", async (
   });
   await cashExpenseForm.getByLabel("Сумма").fill("120.00");
   await cashExpenseForm.getByLabel("Описание / место").fill("E2E cash expense");
-  await cashExpenseForm.getByLabel("Категория").selectOption({ label: "Еда" });
+  await cashExpenseForm.getByLabel("Категория", { exact: true }).selectOption({ label: "Еда" });
   const cashExpenseResponse = page.waitForResponse((response) =>
     response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith("/cash/expenses"),
@@ -315,7 +315,7 @@ async function createManualTransaction(
   await editor.getByLabel("Счёт").selectOption({ label: "E2E Main Card · UAH" });
   await editor.getByLabel("Описание / место").fill(values.description);
   if (values.category) {
-    await editor.getByLabel("Категория").selectOption({ label: values.category });
+    await editor.getByLabel("Категория", { exact: true }).selectOption({ label: values.category });
   }
   await editor.getByRole("button", { name: "Сохранить" }).click();
   await expect(editor).toBeHidden();
