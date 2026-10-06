@@ -1,8 +1,9 @@
 # Current State (2026-10-06)
 
-The Cash Ledger work is on `codex/cash-ledger`, based on `staging` commit
-`6b918e1d490ee9b29e3cb65e01169dc8b9a6c2bb`, which contains Everyday Transactions. The branch has
-not been merged into `staging` or `main`; `main` was not modified.
+Cash Ledger was merged into `staging` as `17c3e7db82dbd597915be1b3ff5c544873a7189c`; the old
+documentation-only `main` branch was not modified. The full-stack E2E readiness work is on
+`codex/mvp-e2e-readiness`, based on that staging merge. This document records both the implemented
+state and the exact verification available on this branch.
 
 ## Verified Working Features
 
@@ -10,8 +11,8 @@ not been merged into `staging` or `main`; `main` was not modified.
   React/TypeScript/Vite. PostgreSQL is the application source of truth; monetary values use
   `Decimal` and PostgreSQL `NUMERIC`.
 - Web authentication, persistent refresh sessions, Telegram identity linking, and family-scoped
-  authenticated APIs are present on the branch base. Web and Telegram derive the same application
-  user and Family; API routes do not accept `family_id` as an authorization input.
+  authenticated APIs are present. Web and Telegram derive the same application user and Family;
+  API routes do not accept `family_id` as an authorization input.
 - XLSX preview/review/confirmation and everyday transaction list/create/edit/soft-delete flows are
   implemented. Transaction changes write audit records atomically and keep imported descriptions.
 - Cash Ledger adds one idempotently created active family cash wallet in UAH. There is no separate
@@ -29,12 +30,16 @@ not been merged into `staging` or `main`; `main` was not modified.
 - Telegram `/cash <amount> <description>` records a cash expense through the same
   `TransactionService` used by Web. If the wallet is missing, the bot directs the user to create it
   in Web.
+- The E2E branch adds a synthetic-only browser journey using Playwright/Chromium against the built
+  React app, FastAPI, and a disposable PostgreSQL database. It covers auth refresh, persisted XLSX
+  review and duplicate detection, import confirmation, transaction CRUD and analytics, cash ledger,
+  RU/UK labels, and a mobile-width overflow check. See the verification table below for the result.
 
 ## Implementation Plan Status
 
 | Phase | Status | Current evidence |
 | --- | --- | --- |
-| 0. Repository/branch setup | Complete | `codex/cash-ledger` is based on the staging merge; `main` is untouched. |
+| 0. Repository/branch setup | Complete | Cash Ledger is on `staging`; E2E readiness is isolated on `codex/mvp-e2e-readiness`; `main` is untouched. |
 | 1-3. Skeleton and database | Complete | FastAPI/React app, PostgreSQL models, and a single Alembic migration head. |
 | 4. Auth MVP | Complete in code | Web auth and persistent Telegram identity linking; family scope comes from the persisted user. |
 | 5-6. Parser/import preview | Complete in code | Synthetic XLSX tests; persisted preview, duplicate review, and bulk/row review actions. |
@@ -42,11 +47,11 @@ not been merged into `staging` or `main`; `main` was not modified.
 | 8. Import confirmation | Complete in code | Web upload/review/confirm path and backend tests. |
 | 9. Transactions API | Complete in code | Family-scoped CRUD, audit, validation, and soft delete. |
 | 10. Analytics API | Complete for current endpoints | Summary, categories, merchants, timeline, savings, work/FOP and insights. Cash withdrawals now remain outside expense/income and count once as transfers. |
-| 11. Frontend skeleton | Partial | Authenticated React shell and page navigation; no rendered-component test harness. |
+| 11. Frontend skeleton | Partial | Authenticated React shell and page navigation; the E2E branch adds a real browser journey, but no component-level test harness. |
 | 12. Import UI | Complete in code | Upload, review, row edit, bulk actions, and confirmation. |
-| 13. Operations/dashboard UI | Partial | Transactions and Cash Ledger UI are implemented; broader dashboard charts/blocks and browser tests remain. |
+| 13. Operations/dashboard UI | Partial | Transactions and Cash Ledger UI are implemented and covered by the browser journey; broader dashboard charts/blocks remain. |
 | 14. Budgets/notifications | Not started | Budget limits and budget notifications are absent. |
-| 15. DevOps | Partial | GitHub Actions covers backend, PostgreSQL migrations/integration, and frontend. Image publishing/deployment are absent. |
+| 15. DevOps | Partial | GitHub Actions covers backend, PostgreSQL migrations/integration, frontend, and the browser-to-PostgreSQL journey. Image publishing/deployment are absent. |
 
 ## Incomplete Features
 
@@ -56,8 +61,8 @@ not been merged into `staging` or `main`; `main` was not modified.
   wall-time semantics are unchanged.
 - A forgotten-cash reminder and richer cash-history controls. The wallet balance remains an
   estimate because unrecorded cash spending cannot be inferred.
-- Rendered React/browser tests. Frontend tests cover API calls and pure helpers, not actual component
-  interactions or browser-to-PostgreSQL flows.
+- Broad frontend component coverage. The new end-to-end journey exercises one representative MVP
+  path; it does not replace focused tests for other screens, validation edges, or accessibility.
 - A live PostgreSQL migration/integration run on this Windows machine. PostgreSQL-marked tests are
   skipped locally because Docker is unavailable; branch CI is the live database verification.
 - Live Telegram Bot API/webhook interaction. Telegram behavior is tested without contacting the
@@ -71,6 +76,8 @@ not been merged into `staging` or `main`; `main` was not modified.
   family role/permission model.
 - The Starlette test client emits a deprecation warning for its current `httpx` integration.
 - Vite succeeds but warns that the minified JavaScript chunk exceeds 500 kB.
+- `npm audit --omit=dev` reports 14 advisories in the current frontend dependency tree (1 low,
+  2 moderate, 11 high); no automatic dependency upgrades were applied in this readiness slice.
 - Backend dependencies are declared in `pyproject.toml` but do not have a checked-in lock file;
   `pip check` passes, but this does not pin a reproducible backend environment.
 - Repository-wide Ruff still reports 21 findings in untouched baseline files (16 `E501`, 5
@@ -105,11 +112,14 @@ npm run dev -- --host localhost
 
 # Verification
 Set-Location backend
-python -m pytest -q
-python -m alembic heads
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m alembic heads
 Set-Location ..\frontend
 npm test
 npm run build
+
+# Full-stack browser verification (requires a disposable database ending in _e2e)
+npm run test:e2e
 ```
 
 PostgreSQL integration tests require a disposable database whose name ends in
@@ -131,13 +141,18 @@ Commands were run in Windows PowerShell from the listed directories.
 | `backend` | `.venv\Scripts\python.exe -m ruff format --check app tests` | **Failed on untouched baseline files:** 25 would be reformatted; all changed Python files pass. |
 | `frontend` | `npm.cmd test` | **14 passed, 0 failed.** |
 | `frontend` | `npm.cmd run build -- --debug` | **Passed:** TypeScript and Vite; 2,212 modules transformed; JS 705.17 kB (200.44 kB gzip), CSS 21.28 kB. Vite emitted the >500 kB chunk warning. An earlier parallel invocation failed in Vite's HTML asset naming; the isolated build completed successfully. |
+| `frontend` | `npm run test:e2e -- --list` | **Passed:** Playwright discovered one full-stack browser test. This lists the test; it does not execute a browser journey. |
+| `frontend` | `npm audit --omit=dev` | **Reported 14 advisories:** 1 low, 2 moderate, 11 high; no fix available for the reported dependency chains at the time of this check. No audit fix was applied. |
 | repository root | `Get-Command docker -ErrorAction SilentlyContinue` | **Unavailable:** no Docker CLI; Compose and live local PostgreSQL checks could not run. |
 | repository root | `git diff --check` | **Passed.** |
-| GitHub Actions | Runs `37456464151` (`4607a13`) and `37456664968` (`d0776ed`) | **Both passed:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
+| GitHub Actions | Cash Ledger run `37456959592` (`6dfeead`) | **Passed:** backend tests and changed-file Ruff; live PostgreSQL migration upgrade/downgrade and integration tests; frontend tests and build. |
+| GitHub Actions | E2E readiness run | **Pending verification on this branch.** Its `fullstack-e2e` job uses PostgreSQL 18.6 and Chromium; the local machine has no Docker/PostgreSQL service, so the real browser-to-database journey cannot be claimed until this run completes successfully. |
 
 ## Recommended Next Task
 
-After this branch's PostgreSQL CI is green, implement the **Budget Foundation** as a backend-first
-slice: Alembic-backed monthly family budget and category-limit models, family-scoped API/service
-operations using `Decimal`, and PostgreSQL plus unit tests. Defer budget notifications and broader
-dashboard redesign to later slices.
+First complete a private run of [Real Data Smoke Checklist](real-data-smoke-checklist.md) with a
+backed-up local database and one real statement; record discrepancies outside the repository and
+resolve any import/date/category issues found. After that validation, implement the **Budget
+Foundation** as a backend-first slice: Alembic-backed monthly family budget and category-limit
+models, family-scoped API/service operations using `Decimal`, and PostgreSQL plus unit tests. Defer
+budget notifications and broader dashboard redesign to later slices.

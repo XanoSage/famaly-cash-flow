@@ -56,6 +56,7 @@ export function ImportUploader({
       <input
         ref={inputRef}
         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        aria-label={t.chooseFile}
         className="visually-hidden"
         disabled={busy}
         onChange={(event) => selectFile(event.currentTarget.files?.item(0) ?? undefined)}

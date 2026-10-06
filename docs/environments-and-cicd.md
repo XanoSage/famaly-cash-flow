@@ -35,7 +35,7 @@
 ## CI/CD MVP
 
 The check-only workflow is `.github/workflows/ci.yml`. It runs on pushes and pull requests targeting
-`staging`, `feature/**`, and `codex/**` and has three jobs:
+`staging`, `feature/**`, and `codex/**` and has four jobs:
 
 - backend fast tests using the existing SQLite fixtures, dependency consistency, and Ruff checks on
   changed Python files only (`E`, `F`, `I` plus format check);
@@ -43,6 +43,10 @@ The check-only workflow is `.github/workflows/ci.yml`. It runs on pushes and pul
   upgrade, newest-revision downgrade/upgrade, and tests for auth refresh, Telegram identity linking,
   import confirmation/Decimal persistence, and PostgreSQL constraints;
 - locked frontend install (`npm ci`), frontend tests, and TypeScript/Vite production build.
+- full-stack browser E2E using Playwright/Chromium, the production Vite preview, FastAPI, and a fresh
+  PostgreSQL 18.6 service. It migrates an empty database with Alembic, seeds synthetic test-only
+  categories/family/account data, and runs the user journey through HTTP. It does not require
+  Telegram credentials.
 
 The PostgreSQL job waits for the service health check and a `pg_isready` probe. It requires its
 integration flag and database URL. Its test fixture verifies a
@@ -50,9 +54,16 @@ database name ending in `_integration_test`, and truncates application data befo
 use a local development or shared database for this suite. The workflow does not publish images or
 deploy to Cloud Run/Firebase; those remain separate DevOps work.
 
-The recommended required branch checks after reviewing branch protection are the workflow jobs
-`backend-tests`, `postgres-integration`, and `frontend`. This repository change does not alter GitHub
+The recommended required branch checks after reviewing branch protection are `backend-tests`,
+`postgres-integration`, `frontend`, and `fullstack-e2e`. This repository change does not alter GitHub
 branch protection settings.
+
+The E2E frontend and API use `http://localhost` on separate ports, which remains same-site for the
+HttpOnly refresh cookie. CI sets `AUTH_COOKIE_SECURE=false`, `SameSite=Lax`, and an exact credentialed
+CORS origin only for the test server process. Production cookie defaults are unchanged. Playwright
+starts both local servers and polls their health URLs with bounded timeouts; the frontend is served
+from the production build rather than Vite's development server. Failure-only browser diagnostics
+are uploaded as a short-retention Actions artifact.
 
 Verification: GitHub Actions run [37363137308](https://github.com/XanoSage/famaly-cash-flow/actions/runs/37363137308)
 passed all three jobs on commit `d44217831d37df67e0ecc64df800046b507ca07c`, including PostgreSQL
