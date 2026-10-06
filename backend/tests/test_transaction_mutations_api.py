@@ -7,6 +7,7 @@ import pytest
 from auth_helpers import current_test_user_dependency
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, func, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -98,6 +99,26 @@ def test_create_expense_normalizes_positive_decimal_and_audits(
     assert audit.before_payload is None
     assert audit.after_payload["amount"] == "-450.25"
     assert audit.after_payload["occurred_at"] == "2026-08-01T09:00:00+00:00"
+
+
+def test_transaction_mutation_lock_targets_only_the_transaction_row() -> None:
+    class StatementCapture:
+        statement = None
+
+        def scalar(self, statement):
+            self.statement = statement
+            return None
+
+    db = StatementCapture()
+    TransactionService(db)._load_transaction(
+        family_id=uuid4(),
+        transaction_id=uuid4(),
+        include_deleted=False,
+        lock=True,
+    )
+
+    compiled = str(db.statement.compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE OF transactions" in compiled
 
 
 def test_create_income_is_positive_and_omitted_timestamp_is_aware(

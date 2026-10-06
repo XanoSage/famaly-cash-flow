@@ -502,7 +502,7 @@ class TransactionService:
         if not include_deleted:
             query = query.where(Transaction.deleted_at.is_(None))
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update(of=Transaction)
         return self.db.scalar(query)
 
     def _commit_with_audit(
