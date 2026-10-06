@@ -45,13 +45,13 @@ integration CI merge). Neither `staging` nor `main` was modified as part of this
 | 6. Import preview backend | Complete | Preview persistence, filters, review, duplicate decisions, and confirmation are implemented. |
 | 7. Categorization | Partial | Rules and current mappings work; planned categorization breadth/heuristics remain incomplete. |
 | 8. Import confirmation | Complete in code | Web upload/review/confirm flow is implemented; no live browser-to-PostgreSQL run was made here. |
-| 9. Transactions API | Complete in code | Family-scoped list/get/create/update/soft-delete, audit, validation, and filters are implemented and covered by backend tests. PostgreSQL integration is still pending CI. |
+| 9. Transactions API | Complete in code; CI verified | Family-scoped list/get/create/update/soft-delete, audit, validation, and filters are implemented and covered by backend tests. PostgreSQL migrations and integration tests pass in feature CI run `37443128429`. |
 | 10. Analytics API | Complete for current endpoints | Existing summary, timeline, category, merchant, savings, work/FOP, and dashboard endpoints remain; deletion exclusion is regression-tested. |
 | 11. Frontend skeleton | Partial | Authenticated React shell and query-string page navigation work; no full routing framework or rendered-component test harness. |
 | 12. Import UI | Complete in code | Upload, review, edit, bulk actions, and explicit confirmation are implemented. |
 | 13. Operations/dashboard UI | Partial | Dashboard and everyday transaction management are implemented. A dedicated cash short form and broader cash workflow remain. |
 | 14. Budgets/notifications | Not started | Budget limits and in-app budget notifications are absent. |
-| 15. DevOps | Partial | GitHub Actions exists on the base branch; image publishing/deployment are absent. This feature branch's CI run must be checked after push. |
+| 15. DevOps | Partial | GitHub Actions passes backend tests/Ruff, live PostgreSQL integration/migrations, and frontend tests/build on feature commit `23eb1bf` (run `37443128429`). Image publishing/deployment are absent. |
 
 ## Incomplete Features
 
@@ -125,7 +125,7 @@ run and branch CI check.
 
 | Directory | Command | Result |
 | --- | --- | --- |
-| `backend` | `.venv\Scripts\python.exe -m pytest -q` | **153 passed, 6 skipped, 1 warning.** The skipped tests require local PostgreSQL. Warning: Starlette deprecates its `httpx` TestClient integration. |
+| `backend` | `.venv\Scripts\python.exe -m pytest -q` | **154 passed, 6 skipped, 1 warning.** The skipped tests require local PostgreSQL. Warning: Starlette deprecates its `httpx` TestClient integration. |
 | `backend` | `.venv\Scripts\python.exe -m pip check` | **Passed:** no broken requirements found. |
 | `backend` | Ruff `E,F,I` and format checks on all changed Python files | **Passed.** |
 | `backend` | `.venv\Scripts\python.exe -m ruff check --select E,F,I --statistics app tests` | **Failed on untouched baseline files:** 24 findings (19 line-too-long, 5 unsorted imports). |
@@ -135,7 +135,8 @@ run and branch CI check.
 | `frontend` | `npm.cmd test` | **13 passed, 0 failed.** Node built-in test runner. |
 | `frontend` | `npm.cmd run build` | **Passed:** TypeScript and Vite; 2,211 modules transformed; JS 692.91 kB (198.16 kB gzip), CSS 20.06 kB. Vite emitted the >500 kB chunk warning. |
 | repository root | `docker --version`; `docker compose config --quiet` | **Unavailable:** Docker executable is not installed. |
-| repository root | `gh auth status` | **Unavailable:** the configured GitHub CLI token is invalid. The feature branch CI result still needs a verifiable check after push. |
+| repository root | GitHub Actions run `37443128429` | **Passed on `23eb1bf`:** backend tests and changed-file Ruff, PostgreSQL integration/migrations, and frontend tests/build all completed successfully. The earlier PostgreSQL job failure was caused by a joined `FOR UPDATE` attempting to lock nullable outer-joined rows; transaction mutation locks now target only the transaction row. |
+| repository root | `gh auth status` | **Unavailable:** the configured GitHub CLI token is invalid. GitHub Actions was reviewed in the authenticated browser to diagnose and verify the feature run. |
 
 `git diff --check` passed. No database data, Telegram service, or production deployment was changed.
 
